@@ -1,0 +1,289 @@
+---
+title: "Producing Hector ensemble with low-ECS"
+author: "Joe Brown"
+date: "2025-03-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Goals
+
+This code document run the Hector + Matilda simple climate model with a deliberately low ECS (supported by literature) distribution. The purpose of using this ECS distribution is to broaden the initial Hector ensemble distribution, facilitating the identification of ensemble members consistent with IPCC WGI assessed warming ranges.
+
+# Set-up
+
+Source files in `set-up` folder.
+
+```{r}
+source("set-up/source_all.R")
+```
+
+# Generate Initial Parameters
+
+All parameter sets have been saved in the following directory: `data/parameters/`.
+Model results from this file have been saved in the following directory: `output/model_results`.
+
+Generate initial parameters to be used for model runs. All parameters are generated using Matilda with the Hector default probability distributions, with the exception of ECS. The ECS parameter probability distribution used in this analysis is defined and sampled below.
+
+Load Hector scenario .ini files:
+```{r}
+# ini directory 
+ini_dir <- paste0(system.file("input", package = "hector"), "/")
+
+# read ini files into a list 
+ini_list <- list("SSP1-1.9" = paste0(ini_dir, "hector_ssp119.ini"), 
+                 "SSP1-2.6" = paste0(ini_dir, "hector_ssp126.ini"), 
+                 "SSP2-4.5" = paste0(ini_dir, "hector_ssp245.ini"), 
+                 "SSP3-7.0" = paste0(ini_dir, "hector_ssp370.ini"), 
+                 "SSP5-8.5" = paste0(ini_dir, "hector_ssp585.ini"))
+
+```
+
+Build perturbed parameter ensemble of 7500 parameter sets:
+```{r}
+# set seed for replication
+set.seed(444)
+
+# set sample size
+n = 10000
+
+# initiate a Hector core instance using SSP2-4.5 scenario (as reference)
+param_core <- newcore(ini_list[[3]])
+
+# generate parameter sets using Hector defaults
+params <- generate_params(core = param_core, draws = n)
+
+```
+
+Define and sample new ECS distribution for "low-ECS" to intentionally broaden initial ensemble distribution:
+```{r}
+set.seed(444)
+
+# sample new low-ECS distribution using log-normal distribution
+low_ecs_sample <- rlnorm(n, lognorm(2.7, 0.7)[1], lognorm(2.7, 0.7)[2])
+
+# Replace ECS values in params dataframe with new samples
+params$ECS <- low_ecs_sample
+
+# Add run_numbers
+params$run_number <- 1:nrow(params)
+
+```
+
+Check ECS summary and histogram to see what this distribution looks like:
+```{r}
+summary(params$ECS)  # Check distribution stats
+
+hist(params$ECS, breaks = 50, main = "Histogram of Low-ECS Samples")  # Visualize
+```
+
+## Save Job
+
+Save the newly generated initial parameter set for subsequent analysis:
+```{r}
+# Check if the file already exists before saving
+params_dir <- here("data", "parameters")
+file_name <- "initial_parameters_low_ecs_10k.csv"
+path_to_file <- file.path(params_dir, file_name)
+
+# saves parameters as a .csv
+save_params(params, path_to_file)
+```
+# Run the model
+
+## Split parameters into separate jobs
+
+Before running the model, split the generated parameter sets into smaller chunks for parallel processing:
+
+```{r}
+# remove run_numbers column
+params <- params %>% 
+  select(-run_number)
+
+# splitting params into 100 separate chunks
+
+param_chunks <- split(params, 1:100)
+
+```
+
+## Set up: Parallel Computing
+
+To improve efficency, parallel computing is used to distribute the model runs across multiple CPU cores.
+```{r}
+# Detect available cores and specify how many to initialize
+cpu_cores <- detectCores() - 1 # use all but one core
+cl <- makeCluster(cpu_cores) # initialize cluster
+
+# export necessary objects to each worker in the cluster
+exp <- c("param_chunks", 
+         "ini_list", 
+         "newcore", 
+         "iterate_model")
+clusterExport(cl, exp)
+
+```
+
+## Run model using parallel
+
+Execute Hector + Matilda in parallel for each climate scenario, using pre-defined parameter chunks.
+```{r}
+start <- Sys.time()
+# Run model in parallel across scenarios
+result <- parLapply(cl, names(ini_list), function(scenario_name) {
+  
+  # retrieve scenario ini file from list
+  scenario <- ini_list[[scenario_name]]
+  core <- newcore(scenario, name = scenario_name) # initialize model core
+  
+  # Iterate model over each parameter chunk
+  result_list <- lapply(param_chunks, function(chunk) {
+    
+    iterate_model(core = core, 
+                  params = chunk, 
+                  save_years = 1800:2200, 
+                  save_vars = c("global_tas", 
+                                "gmst", 
+                                "CO2_concentration", 
+                                "ocean_uptake"))
+  })
+  
+  return(result_list)
+  
+})
+
+# Assign scenario names to results
+names(result) <- names (ini_list)
+
+# Stop parallel cluster once processing is complete
+stopCluster(cl)
+
+# Print elapsed time
+end <- Sys.time()
+print(end - start)
+
+```
+
+### Ensure consistent run numbering
+
+Adjust run numbering across parameter chunks to maintain consistency between model outputs.
+```{r}
+# Loop over each scenario in result and adjust run numbers--ensures correct run_number from one chunk to the next.
+for (scenario_name in names(result)) {
+  
+  scenario_list <- result[[scenario_name]]  # Extract scenario chunk list
+  max_run_number <- 0  # # Initialize counter to start counting from 1
+  
+  for (i in seq_along(scenario_list)) {
+    scenario_list[[i]]$run_number <- scenario_list[[i]]$run_number + max_run_number # Offset run numbers
+    max_run_number <- max(scenario_list[[i]]$run_number)  # Update max for next chunk
+  }
+  
+  # Store updated results
+  result[[scenario_name]] <- scenario_list
+}
+
+```
+
+
+### Identify and track NA values
+
+Check for missing values (`NA`) in the model results and flag affected run numbers for troubleshooting.
+```{r}
+## Find runs with missing values (NAs)
+na_runs <- list()
+
+# Loop over each scenario
+ for (scenario_name in names(result)) {
+     
+     scenario_list <- result[[scenario_name]]  # Extract list of 100 chunks
+     
+     # identify run numbers where there are NAs
+     na_run_numbers <- unlist(lapply(scenario_list, function(df) {
+       
+         df$run_number[rowSums(is.na(df)) > 0]  # Get run_number with any NA values
+     
+       }))
+     
+     # Store results if any NAs are found
+     if (length(na_run_numbers) > 0) {
+       
+         na_runs[[scenario_name]] <- unique(na_run_numbers)  # Keep only unique run numbers
+     
+         }
+ }
+
+# Print summary of NA runs
+ print(na_runs)
+ 
+```
+
+### Combine results into a single data object
+
+Once the model runs are complete, merge all chunked results into a unified data set for analysis:
+```{r}
+# bind chunked results into a df for each scenario
+model_result <- lapply(result, function(scenario) {
+  
+  bound_result <- do.call(rbind, scenario)
+
+  return(bound_result)
+
+})
+
+```
+
+## Remove runs with `NA` values
+
+To ensure consistency, any runs with `NA` values in one scenario will be removed from all scenarios. This guarantees that all scenarios contain the same set of valid runs, preventing bias, errors, or complications introduced by incomplete data.
+
+### Step 1: Identify runs with NA values
+```{r}
+# Identify all run_numbers with NA in any scenario
+na_run_numbers <- unique(unlist(lapply(model_result, function(df) {
+  
+  df$run_number[rowSums(is.na(df)) > 0]  # Extract run numbers with NA
+
+  })))
+
+print(na_run_numbers) # display affected run_numbers for verification
+
+```
+
+### Step 2: Remove runs with NA values
+```{r}
+# Remove runs with NA values across all scenarios
+# If a run has NA values in any scenario, remove it from all scenarios.
+model_result <- lapply(model_result, function(df) {
+  
+  df[!df$run_number %in% na_run_numbers, ]  # Keep only valid runs
+
+  })
+
+```
+
+### Step 3: Verify removal of NA runs
+```{r}
+# Print the number of removed runs and verify
+cat("Removed", length(na_run_numbers), "runs due to NA values across all scenarios.\n")
+
+# Check that all scenarios now have the same number of runs
+sapply(model_result, nrow)
+```
+
+# Save job
+
+```{r}
+# Define file path
+result_dir <- here("output", "model_results")
+file_name <- "initial_result_low_ecs_10k.RDS"
+file_path <- file.path(result_dir, file_name)
+
+# Save model results using the new function
+save_model_results(model_result, file_path)
+
+```
+
+

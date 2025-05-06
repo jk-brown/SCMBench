@@ -1,0 +1,443 @@
+---
+title: "Filtering to find IPCC aligned ensemble"
+author: "Joe Brown"
+date: "2025-03-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Goals
+
+This code document filters the Hector + Matilda perturbed parameter ensemble to identify ensemble members  who's central (and upper and lower bounds) are consistent with IPCC AG1-assessed near-, mid-, and long-term warming ranges.
+
+# Set-up
+
+Source files in `set-up` folder.
+```{r}
+source("set-up/source_all.R")
+
+```
+
+Load model result. 
+
+Model results produced in `Rmd 03` have been saved in the following directory: `output/model_results`.
+```{r}
+model_result <- readRDS("output/model_results/initial_result_low_ecs_10k.RDS")
+
+```
+
+Confirm that all scenarios retain the same set of ensemble members following NA removal in previous workflow step. This is a check to maintain consistency in downstream analysis.
+
+```{r}
+sapply(model_result, nrow)
+
+```
+
+The model result for each scenario should have the same number of rows.
+
+# Process GSAT Data
+
+The following steps extract and normalize the GSAT (`global_tas`) response variable from the model output. We normalize the results to 1995-2014 reference period to prepare the data fro comparison against IPCC WGI assessed warming ranges.  
+
+## Extract GSAT Data
+
+Extract only the `global_tas` variable (Global Surface Air Temperature) from the model results. This is the key variable for for evaluating the ensemble warming range. 
+
+```{r}
+# Extract global_tas from each scenario 
+gsat_data <- lapply(model_result, function(df) {  
+  
+  subset_data = subset(df, variable == "global_tas")
+  
+  return(subset_data)
+})
+
+```
+
+## Normalize GSAT to the IPCC reference period (1995-2014)
+
+Normalize the GSAT time series to the 1995-2014 reference period, consistent with IPCC AR6 convention. 
+
+*Note*: The `normalize_to_reference()` function is provided in the project's `utils` folder: `set-up/utils.R`.
+
+```{r}
+# Normalize GSAT data to the 1995–2014 reference period
+gsat_data_normalized <- lapply(gsat_data, function(df) {
+  
+  normalized <- normalize_to_reference(df, 
+                                       reference_start = 1995, 
+                                       reference_end = 2014)
+  
+  return(normalized)
+}) 
+
+```
+
+## Save intial GSAT result
+
+```{r}
+# Define file path
+result_dir <- here("output", "model_results")
+file_name <- "init_gsat_data_normalized.RDS"
+file_path <- file.path(result_dir, file_name)
+
+# Save model results using the new function
+save_model_results(gsat_data_normalized, file_path)
+
+```
+
+# Define warming metric and compute warming results
+
+## Define warming metric
+
+Define the metric used to compute *median GSAT for 2081-2100*. This metric will be used to identify ensemble members consistent with IPCC-assessed end-of-century warming ranges. 
+
+*Note*: Additional metrics for other time periods will be computed down stream as needed.
+
+```{r}
+# Define end-of-century warming metric (median GSAT over 2081-2100)
+warming_metric <- new_metric(var = "global_tas", years = 2081:2100, op = median)
+  
+```
+
+## Compute warming results 
+
+Compute end-of-century warming values for each ensemble member. These values will be used to identify ensemble members consistent with IPCC-assessed long-term warming ranges.
+
+```{r}
+# compute end-of-century warming results
+warming_results <- lapply(gsat_data_normalized, function(df) {
+  
+  metric_result <- metric_calc(df, warming_metric)
+  
+  return(metric_result)
+})
+
+```
+
+## Check ensemble size
+
+Check the number of available ensemble members for each SSP scenario. This step verifies that all scenarios have the same number of runs, consistent with the precautions implemented in the previous workflow document (`03_run_model_with_low_ecs.Rmd`).
+
+```{r}
+# Check the number of runs for each SSP
+run_counts <- sapply(warming_results, function(df) nrow(df))
+
+# Print counts to inspect
+print(run_counts)
+
+```
+All SSPs should have the same number of results.
+
+# Indentify ensemble aligned with IPCC warming ranges
+
+## Step 1: Compare ensmeble distirbution to IPCC range
+
+We begin with SSP2-4.5 because it is the IPCC's recommended scenario for assessing model consistency. It provides a mid-range forcing case suitable for evaluating whether the ensemble aligns with the IPCC's assessed warming uncertainty range.
+
+```{r}
+# Extract SSP2-4.5 warming results
+ssp_data <- warming_results$`SSP2-4.5`
+
+# Define IPCC Target Values - This information can be found in TABLE 7.SM.4 of IPCC AR6 WGI Ch. 7
+ipcc_median <- 1.81  # Median target for SSP2-4.5
+ipcc_lower <- 1.24   # 5th percentile target
+ipcc_upper <- 2.59   # 95th percentile target
+
+# Compute ensemble percentiles
+ensemble_median <- quantile(ssp_data$metric_result, 0.5)
+ensemble_lower <- quantile(ssp_data$metric_result, 0.05)
+ensemble_upper <- quantile(ssp_data$metric_result, 0.95)
+
+# Display ensemble distribution relative to IPCC Targets
+cat("Original Median:", ensemble_median, "\n")
+cat("Original 5th Percentile:", ensemble_lower, "\n")
+cat("Original 95th Percentile:", ensemble_upper, "\n")
+```
+
+After running this, compare the ensemble's median and spread against IPCC targets. This will inform whether filtering is needed and whether the ensemble covers the assessed range sufficiently. 
+
+## Step 2: Filter the ensmeble based on IPCC range
+
+Filter the ensemble to retain runs within (or near) the IPCC WGI-assessed range. 
+A small tolerance is applied to prevent over-trimming the ensemble and enough members remain for sub-sampling. 
+The allowance values can be adjusted to modify the width of the accepted range. 
+
+```{r}
+# Filter ensemble members within the IPCC range
+filtered_df <- ssp_data %>%
+  filter(metric_result >= (ipcc_lower - 0.3), # adjust allowance as needed to fit IPCC
+         metric_result <= (ipcc_upper + 0.5)) # adjust allowance as needed to fit IPCC
+
+# Report the number of retained runs
+cat("Number of runs after initial filtering:", nrow(filtered_df), "\n")
+
+```
+
+This step reduces the ensemble to only include runs that are approximately compatible with the IPCC's range. This gives us an initial candidate set of ensemble members for further refinement.
+
+## Step 3: Subsample to optimize IPCC alignment
+
+Sub-sample from the filtered set to identify an ensemble subset that best matches the IPCC WGI-assessed median and percentiles.
+
+```{r}
+# Optimize subset to align with IPCC target values
+set.seed(44)  # Ensure reproducibility
+
+# Ensure data is in a consistent row order
+filtered_df <- filtered_df %>% arrange(run_number)
+
+best_subset <- NULL # Placeholder to store best subset
+best_score <- Inf  # Initialize best score with a large value 
+
+# Loop to search for the best-matching ensemble subset
+for (i in 1:1000) {  # Try 1000 different subsets
+  
+  # Draw a random sample of 6000 ensemble members from the full ensemble
+  sample_id <- sample(nrow(filtered_df), size = 4000)
+  candidate_subset <- filtered_df[sample_id, ]
+
+  # Compute percentiles of the candidate subset
+  med <- median(candidate_subset$metric_result)
+  low <- quantile(candidate_subset$metric_result, 0.05)
+  up <- quantile(candidate_subset$metric_result, 0.95)
+
+  # Calculate a simple score based on the absolute deviation from IPCC targets
+  score <- abs(med - ipcc_median) + abs(low - ipcc_lower) + abs(up - ipcc_upper)
+
+  # Keep the candidate subset if it outperforms the current best subset
+  if (score < best_score) {
+    best_score <- score
+    best_subset <- candidate_subset
+  }
+}
+
+# Store the best-matching subset as the final ensemble
+resampled_subset <- best_subset
+
+# Report the final statistics of the selected ensemble
+filtered_median <- median(resampled_subset$metric_result)
+filtered_lower <- quantile(resampled_subset$metric_result, 0.05)
+filtered_upper <- quantile(resampled_subset$metric_result, 0.95)
+
+cat("Filtered Median:", filtered_median, "\n")
+cat("Filtered 5th Percentile:", filtered_lower, "\n")
+cat("Filtered 95th Percentile:", filtered_upper, "\n")
+
+```
+
+This step identifies the best-matching subset of ensemble members, minimizing deviation from the IPCC WGI-assessed median, 5th, and 95th percentiles. This subset will serve as the IPCC-aligned ensemble for downstream analysis.
+
+# Building IPCC parameter set
+
+## Extract IPCC-aligned ensmeble member `run_numbers`
+
+With the optimized ensemble subset selected, we can extract the corresponding `run_number` identifiers. These will be used to select the same ensemble members across all SSP scenarios to ensure consistency.
+
+```{r}
+# Extract run_number from the selected subset
+ipcc_aligned_run_numbers <- resampled_subset$run_number
+
+# display the number of runs selected 
+cat("Number of selected run numbers:", length(ipcc_aligned_run_numbers), "\n")
+
+# Confirm that the extracted run_numbers match those in the selected subset 
+# (this is a safety check - they should always be identical)
+identical(ipcc_aligned_run_numbers, resampled_subset$run_number)
+
+```
+### Optional Save IPCC aligned run numbers
+
+```{r}
+saveRDS(resampled_subset$run_number, "output/parameters/ipcc_aligned_run_numbers.rds")
+
+```
+
+## Apply IPCC-aligned ensemble to all SSPs
+
+Now we apply extracted runs to all SSP scenarios, ensuring the filtered ensemble is consistently used for future analyses.
+
+### Filter ensemble members across SSPs 
+
+Filter each SSP scenario to retain only the runs identified as IPCC-aligned.
+```{r}
+# Filter each SSP using only the IPCC-aligned run numbers
+filtered_results <- lapply(warming_results, function(df) {
+  
+  df %>% filter(run_number %in% ipcc_aligned_run_numbers)
+
+  })
+
+# Check if all SSPs now have the same number of runs
+filtered_run_counts <- sapply(filtered_results, nrow)
+print(filtered_run_counts)  # Should be identical across all SSPs
+
+```
+
+### Evaluate how other SSPs align with IPCC targets
+
+Check how well the filtered ensembles matches IPCC warming ranges across all SSPs.
+
+```{r}
+# compute and display 5th, 50th, and 95th for each SSP
+lapply(filtered_results, function(df) {
+  
+  quantile(df$metric_result, c(0.05, 0.50, 0.95))
+  
+})
+```
+
+This provides a diagnostic for whether the selected ensemble is reasonably aligned with IPCC constraints beyond the SSP2-4.5 scenario. But still only represents the long-term, end-of-century warming.
+
+### Extract parameter sets for IPCC-aligned runs
+
+Extract all corresponding parameter sets for the IPCC-aligned runs. These will be saved and used to run an IPCC-aligned Hector + Matilda instance. 
+
+*NOTE*: The initial parameter set loaded below may already be present in the global environment. Otherwise the initial parameter set should be saved in the `data/parameters` directory.
+
+```{r}
+# load initial parameter set used to run the model.
+init_params <- read.csv("data/parameters/initial_parameters_low_ecs_10k.csv", stringsAsFactors = F)
+
+# Assign run_numbers column 
+init_params$run_number <- 1:nrow(init_params)
+
+# Filter to retain only the aligned parameter sets
+IPCC_params <- init_params %>% 
+  filter(run_number %in% ipcc_aligned_run_numbers) 
+
+# Ensure run_numbers are numeric and consistent
+# This is necessary because run_number is likely read as an integer.
+# For comparison functions like identical() to check for appropriate matching, 
+# run_number must be treated as numeric to avoid false mismatches.
+IPCC_params$run_number <- as.numeric(IPCC_params$run_number)
+
+# Sanity checks
+# Confirm that:
+# (1) The number of parameter sets matches the number of selected ensemble members.
+# (2) The run_numbers from the parameter set exactly match those used in the filtered ensemble.
+# This ensures that the extracted parameter sets correspond perfectly to the IPCC-aligned ensemble members.`
+nrow(IPCC_params)
+identical(sort(IPCC_params$run_number), sort(resampled_subset$run_number))
+```
+
+### Cross-check ensmeble and parameter consistency
+
+Confirm that the number of parameter sets and ensemble members are consistent across all SSPs.
+
+```{r}
+# Verify that counts match across all SSP objects
+print(nrow(IPCC_params))  # Should equal the filtered run count
+print(sapply(filtered_results, nrow)) # Should be equal across SSPs
+
+```
+
+## Save IPCC-aligned parameter set
+
+Save the final set of IPCC-aligned parameters for use in subsequent model runs.
+
+```{r}
+# Remove run_number column before saving
+IPCC_params <- IPCC_params %>% 
+  select(-run_number)
+
+# Save the IPCC-aligned parameter set for use in future model runs
+param_output_dir <- here("output", "parameters")
+file_name <- "IPCC_params.csv"
+path_to_IPCC_params <- file.path(param_output_dir, file_name)
+save_params(IPCC_params, path_to_IPCC_params)
+
+```
+
+## Visualizations
+
+data prep:
+```{r}
+gsat_normalized_df <- do.call(rbind, gsat_data_normalized)
+
+gsat_normalized_df <- subset(gsat_normalized_df, year > 1994)
+
+filtered_gsat_data <- lapply(gsat_data_normalized, function(df) {
+  
+  df %>% filter(run_number %in% ipcc_aligned_run_numbers)
+  
+})
+
+filtered_gsat_df <- do.call(rbind, filtered_gsat_data)
+
+filtered_gsat_df <- subset(filtered_gsat_df, year > 1994)
+```
+
+### Computing values for full AR6 assessed warming range table:
+```{r}
+# initialize metric
+long_warming_metric <- new_metric(var = 'global_tas', years = 2081:2100, op = median)
+mid_warming_metric <- new_metric(var = 'global_tas', years = 2041:2060, op = median)
+short_warming_metric <- new_metric(var = 'global_tas', years = 2021:2040, op = median)
+
+metric_list <- list('2081-2100' = long_warming_metric,
+                    '2041-2060' = mid_warming_metric,
+                    '2021-2040' = short_warming_metric)
+
+# Compute warming metrics using filtered ensemble
+warming_result_post <- lapply(names(filtered_gsat_data), function(scenario_name) {
+   
+   # Copy gsat data (filtered)
+   df <- filtered_gsat_data[[scenario_name]]
+   
+   # Compute metrics for each term length for the current scenario
+   metrics_by_term <- lapply(names(metric_list), function(term_length) {
+
+     # Copy metric data
+     metric <- metric_list[[term_length]]
+
+     # Compute metrics
+     result <- metric_calc(df, metric)
+
+     # Add term_length column
+     result$term_length <- term_length
+
+     return(result)
+   })
+
+   # rbind term_lengths for the current scenario
+   metrics_by_scenario <- do.call(rbind, metrics_by_term)
+
+   # Add column for scenario name
+   metrics_by_scenario$scenario <- scenario_name
+
+   return(metrics_by_scenario)
+})
+
+# Bind metric results for all scenarios into one data frame
+TEST_metrics_df <- do.call(rbind, warming_result_post)
+```
+
+Compute warming summary
+```{r}
+warming_summary <- TEST_metrics_df %>% 
+  group_by(scenario, term_length) %>% 
+  summarise(
+    lower = round(quantile(metric_result, 0.05), 2), 
+    central = round(median(metric_result), 2), 
+    upper = round(quantile(metric_result, 0.95), 2),
+  .groups = "drop")
+
+write.csv(warming_summary, "output/summary_results/warming_summary.csv")
+
+```
+
+
+Not super informative other than to show that the filtering step largely trims ensemble members from the extremes. But, this is done strategically on my part to trim the distribution asymmetrically to try and get the best alignment with IPCC.
+
+*This figure primarily illustrates how the filtering step trims ensemble members, particularly at the extremes of the distribution. The filtering is applied asymmetrically to optimize alignment with IPCC projections, ensuring that the retained subset better matches the expected warming ranges while preserving internal variability.*
+
+## NEW TODO:
+
+1. Sample ECS with a new prior distribution: mean = 2.7 SD = 0.7 distribution = lognormal
+2. run the model with the new ECS samples (and other parameters)
+3. Score against history (can't leave this out because of the independent parameter sampling)
+4. then try to align results to IPCC range.
