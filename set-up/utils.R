@@ -17,35 +17,59 @@
 #'
 #' @return A named list of results, where each element corresponds to a scenario and contains the combined output from all parameter chunks.
 #'
-matilda_conc_driven <- function(param_chunks, ini_list, constraint_df, 
-                                save_years = 1850:2200, 
-                                save_vars = c("global_tas", "gmst", "CO2_concentration", "ocean_uptake", "RF_tot"),
+matilda_conc_driven <- function(param_chunks,
+                                ini_list,
+                                constraint_df,
+                                save_years = 1850:2200,
+                                save_vars = c("global_tas",
+                                              "gmst",
+                                              "CO2_concentration",
+                                              "ocean_uptake",
+                                              "RF_tot"),
                                 n_cores = parallel::detectCores() - 1) {
-  
   # Create cluster
   cl <- parallel::makeCluster(n_cores)
   
   # Helper function to apply prescribed CO2 and run iterate_model
-  run_chunk_with_prescribed_co2 <- function(core, chunk, constraint_df, save_years, save_vars) {
-    setvar(core,
-           dates = constraint_df$year,
-           var = CO2_CONSTRAIN(),
-           values = constraint_df$value,
-           unit = getunits(CO2_CONSTRAIN()))
+  run_chunk_with_prescribed_co2 <- function(core,
+                                            chunk,
+                                            constraint_df,
+                                            save_years,
+                                            save_vars) {
+    setvar(
+      core,
+      dates = constraint_df$year,
+      var = CO2_CONSTRAIN(),
+      values = constraint_df$value,
+      unit = getunits(CO2_CONSTRAIN())
+    )
     reset(core)
     
-    iterate_model(core = core,
-                  params = chunk,
-                  save_years = save_years,
-                  save_vars = save_vars)
+    iterate_model(
+      core = core,
+      params = chunk,
+      save_years = save_years,
+      save_vars = save_vars
+    )
   }
   
   # Export needed objects
-  parallel::clusterExport(cl, varlist = c("param_chunks", "ini_list", "constraint_df",
-                                          "run_chunk_with_prescribed_co2",
-                                          "newcore", "iterate_model", "setvar", 
-                                          "CO2_CONSTRAIN", "reset", "getunits"),
-                          envir = environment())
+  parallel::clusterExport(
+    cl,
+    varlist = c(
+      "param_chunks",
+      "ini_list",
+      "constraint_df",
+      "run_chunk_with_prescribed_co2",
+      "newcore",
+      "iterate_model",
+      "setvar",
+      "CO2_CONSTRAIN",
+      "reset",
+      "getunits"
+    ),
+    envir = environment()
+  )
   
   # Run in parallel
   result <- parallel::parLapply(cl, names(ini_list), function(scenario_name) {
@@ -61,6 +85,79 @@ matilda_conc_driven <- function(param_chunks, ini_list, constraint_df,
   
   names(result) <- names(ini_list)
   parallel::stopCluster(cl)
+  
+  return(result)
+}
+
+
+#' Run Matilda in Emissions-driven Mode
+#'
+#' Runs a perturbed parameter ensemble (PPE) using Hector and Matilda in emissions-driven mode, 
+#' where CO2 concentrations are simulated internally based on fossil fuel and land-use emissions.
+#' Each scenario is processed in parallel using separate CPU cores, with model runs distributed 
+#' across parameter chunks.
+#'
+#' @param params_chunks A list of data frames, where each element contains a chunk of parameter sets to be run.
+#' @param ini_list A named list of Hector `.ini` file paths for each SSP scenario.
+#' @param save_years A numeric vector of years to save output for (default: \code{1850:2200}).
+#' @param save_vars A character vector of variable names to save from each Hector run 
+#'   (default: \code{c("global_tas", "gmst", "CO2_concentration", "ocean_uptake", "RF_tot")}).
+#' @param ncores Number of CPU cores to use for parallel execution (default: all but one core).
+#'
+#' @return A named list of results, where each element corresponds to a scenario and contains the combined output from all parameter chunks.
+#' 
+matilda_emission_driven <- function(params_chunks,
+                                    ini_list,
+                                    save_years = 1850:2200,
+                                    save_vars = c("global_tas",
+                                                  "gmst",
+                                                  "CO2_concentrations",
+                                                  "ocean_uptake",
+                                                  "RF_tot"),
+                                    ncores = parallel::detectCores() - 1) {
+  # create cluster
+  cl <- parallel::makeCluster(n_cores)
+  
+  # function to run iterate_model
+  run_chunk_emission_driven <- function(core, chunk, save_years, save_vars) {
+    reset(core)
+    
+    iterate_model(
+      core = core,
+      params = chunk,
+      save_years = svae_vars,
+      save_vars = save_vars
+    )
+  }
+  
+  # Export needed objects
+  parallel::clusterExport(
+    cl,
+    varlist = c(
+      "param_chunks",
+      "ini_list",
+      "run_chunk_emission_driven",
+      "newcore",
+      "iterate_model",
+      "reset"
+    ),
+    envir = environment()
+  )
+  
+  # Run in parallel
+  result <- parallel::parLapply(cl, names(ini_list), function(scenario_name) {
+    scenario_ini <- ini - list[[scenario_name]]
+    
+    result_list <- lapply(param_chunks, function(chunk) {
+      core <- newcore(scenario_ini, name = scenario_name)
+      run_chunk_emission_driven(core, save_years, save_vars)
+    })
+    
+    return(result_list)
+  })
+  
+  names(result) <- names(ini_list)
+  parallel::stopCluster()
   
   return(result)
 }

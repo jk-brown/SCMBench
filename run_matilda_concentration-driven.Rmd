@@ -18,6 +18,7 @@ The goal for this file is to begin by running Hector + Matilda in concentration-
 ## Load libraries
 
 ```{r, message=FALSE}
+
 source("set-up/libraries.R")
 
 ```
@@ -25,63 +26,24 @@ source("set-up/libraries.R")
 ## Load ini files
 
 ```{r}
-# ini directory 
-ini_dir <- paste0(system.file("input", package = "hector"), "/")
 
-# read ini files into a list 
-ini_list <- list("SSP1-1.9" = paste0(ini_dir, "hector_ssp119.ini"), 
-                 "SSP1-2.6" = paste0(ini_dir, "hector_ssp126.ini"), 
-                 "SSP2-4.5" = paste0(ini_dir, "hector_ssp245.ini"), 
-                 "SSP3-7.0" = paste0(ini_dir, "hector_ssp370.ini"), 
-                 "SSP5-8.5" = paste0(ini_dir, "hector_ssp585.ini"))
+source("set-up/load_ini.R")
 
 ```
 
-## Build perturbed parameter data frame
+## load perturbed parameter data frame
+
+This step loads a pre-generated perturbed parameter ensemble (PPE) that will be used across all Hector + Matilda experiments. The PPE was generated once using Hector defaults and saved to ensure consistent sampling across model configurations. Parameters are automatically "chunked" for parallel processing.
 
 ```{r}
-# set sample size
-n = 10000
 
-# initiate a Hector core instance using SSP2-4.5 scenario (as reference)
-param_core <- newcore(ini_list[[3]])
+source("set-up/load_params.R")
 
-# set seed for replication
-set.seed(444)
-
-# generate parameter sets using Hector defaults
-params <- generate_params(core = param_core, draws = n)
-```
-
-## Save this parameter set 
-```{r, eval=FALSE}
-# define directory path
-params_dir <- here("data", "parameters")
-
-# create directory if one does not exist
-if (!dir.exists(params_dir)) {
-  dir.create(params_dir, recursive = T)
-}
-
-# identify the file path
-file_name <- "matilda_parameters_10k.csv"
-file_path <- file.path(params_dir, file_name)
-
-# save parameters
-write.csv(params, file_path)
 ```
 
 # Running the model: Constrained to C02
 
 The goal here is to run Hector + Matilda in "concentration-driven" mode by constraining historical CO2 concentrations to observations.
-
-## Split parameters df into chunks
-
-```{r}
-
-param_chunks <- param_chunks <- split(params, cut(seq_len(nrow(params)), breaks = 10, labels = FALSE))
-
-```
 
 ## Load CO2 data for constraint
 
