@@ -1,7 +1,7 @@
 ---
-title: "Concentration Driven Hector + Matilda"
+title: "Emissions Driven Hector + Matilda"
 author: "Joe Brown"
-date: "2025-05-05"
+date: "2025-05-06"
 output: html_document
 ---
 
@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Goal
 
-The goal for this file is to begin by running Hector + Matilda in concentration-driven mode. This means that we will be constraining history to CO2 concentrations and then using perturbed parameters to make future projections. 
+The goal for this file is to begin by running Hector + Matilda in emissions-driven mode. This means that we will allow Hector to internally simulate historical CO2 concentrations from emissions inputs and then use perturbed parameters to make future projections.
 
 # Set-up
 
@@ -43,15 +43,6 @@ source("set-up/load_params.R")
 
 # Running the model: Constrained to C02
 
-The goal here is to run Hector + Matilda in "concentration-driven" mode by constraining historical CO2 concentrations to observations.
-
-## Load CO2 data for constraint
-
-```{r}
-
-constraint_data <- read.csv("data/observations/annual_co2_concentration.csv")
-
-```
 
 ## Run model 
 
@@ -65,7 +56,7 @@ Run Hector over entire PPE for each SSP scenario in the scenario list
 
 ```{r}
 start_time <- Sys.time()
-matilda_result <- matilda_conc_driven(param_chunks, ini_list, constraint_data)
+matilda_result <- matilda_emission_driven(param_chunks, ini_list)
 end_time <- Sys.time()
 
 elapsed_time <- end_time - start_time
@@ -93,26 +84,9 @@ if (!dir.exists(result_dir)) {
 }
 
 # identify the file path
-file_name <- "matilda_results_concentration.RDS"
+file_name <- "matilda_results_emission.RDS"
 file_path <- file.path(result_dir, file_name)
 
-# save 
+# save
 saveRDS(matilda_result, file_path)
 ```
-
-# Quick visualization
-
-```{r}
-matilda_conc_driven <- do.call(rbind, matilda_result)
-rownames(matilda_conc_driven) <- NULL
-
-```
-
-```{r}
-ggplot(data = subset(matilda_conc_driven, variable %in% c("CO2_concentration", "global_tas"))) +
-  geom_line(aes(x = year, y = value, group = run_number)) +
-  facet_grid(variable ~ scenario, scales = "free_y") +
-  theme_light()
-
-```
-

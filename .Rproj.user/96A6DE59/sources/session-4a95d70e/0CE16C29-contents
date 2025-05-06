@@ -96,7 +96,7 @@ if (!dir.exists(result_dir)) {
 file_name <- "matilda_results_concentration.RDS"
 file_path <- file.path(result_dir, file_name)
 
-# save parameters
+# save 
 saveRDS(matilda_result, file_path)
 ```
 
