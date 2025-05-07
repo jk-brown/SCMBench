@@ -40,7 +40,7 @@ matilda_conc_driven <- function(param_chunks,
       core,
       dates = constraint_df$year,
       var = CO2_CONSTRAIN(),
-      values = constraint_df$value,
+      values = constraint_df$CO2_constrain,
       unit = getunits(CO2_CONSTRAIN())
     )
     reset(core)
