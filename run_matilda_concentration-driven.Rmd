@@ -83,7 +83,7 @@ Correct the run_numbers for each of element in the result list
 
 ```{r}
 
-matilda_result <- fix_run_numbers(matilda_result)
+matilda_result_exp1 <- fix_run_numbers(matilda_result_exp1)
 
 ```
 
@@ -103,7 +103,7 @@ file_name <- "exp1_matilda_results_concentration_full.RDS"
 file_path <- file.path(result_dir, file_name)
 
 # save 
-saveRDS(matilda_result, file_path)
+saveRDS(matilda_result_exp1, file_path)
 ```
 
 # Experiment 2 Running the model: Constrained to C02 in history with emissions driven future
@@ -114,23 +114,17 @@ The goal here is to run Hector + Matilda in "concentration-driven" mode by const
 
 ```{r}
 
-constraint_data_exp1 <- read.csv("data/processed/CO2_constrain_full.csv")
+constraint_data_exp2 <- read.csv("data/processed/CO2_constrain_historical.csv")
 
 ```
 
 ## Run model 
 
-```{r}
-
-source("set-up/utils.R")
-
-```
-
 Run Hector over entire PPE for each SSP scenario in the scenario list
 
 ```{r}
 start_time <- Sys.time()
-matilda_result_exp1 <- matilda_conc_driven(param_chunks, ini_list, constraint_data_exp1)
+matilda_result_exp2 <- matilda_conc_driven(param_chunks, ini_list, constraint_data_exp2)
 end_time <- Sys.time()
 
 elapsed_time <- end_time - start_time
@@ -142,7 +136,7 @@ Correct the run_numbers for each of element in the result list
 
 ```{r}
 
-matilda_result <- fix_run_numbers(matilda_result)
+matilda_result_exp2 <- fix_run_numbers(matilda_result_exp2)
 
 ```
 
@@ -158,12 +152,13 @@ if (!dir.exists(result_dir)) {
 }
 
 # identify the file path
-file_name <- "exp1_matilda_results_concentration_full.RDS"
+file_name <- "exp2_matilda_results_concentration_historic.RDS"
 file_path <- file.path(result_dir, file_name)
 
 # save 
-saveRDS(matilda_result, file_path)
+saveRDS(matilda_result_exp2, file_path)
 ```
+
 
 
 
