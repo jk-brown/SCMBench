@@ -1,3 +1,0 @@
-"0","constraint_data <- read.csv(file.path(ini_dir, ""tables"", ""ssp245_emiss-constraints_rf.csv""),"
-"0","                            comment.char = "";"")"
-"0",""
