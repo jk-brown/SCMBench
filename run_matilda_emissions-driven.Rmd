@@ -56,7 +56,7 @@ Run Hector over entire PPE for each SSP scenario in the scenario list
 
 ```{r}
 start_time <- Sys.time()
-matilda_result <- matilda_emission_driven(param_chunks, ini_list)
+matilda_result_exp3 <- matilda_emission_driven(param_chunks, ini_list)
 end_time <- Sys.time()
 
 elapsed_time <- end_time - start_time
@@ -68,7 +68,7 @@ Correct the run_numbers for each of element in the result list
 
 ```{r}
 
-matilda_result <- fix_run_numbers(matilda_result)
+matilda_result_exp3 <- fix_run_numbers(matilda_result_exp3)
 
 ```
 
@@ -84,7 +84,7 @@ if (!dir.exists(result_dir)) {
 }
 
 # identify the file path
-file_name <- "matilda_results_emission.RDS"
+file_name <- "exp3_matilda_results_emission.RDS"
 file_path <- file.path(result_dir, file_name)
 
 # save

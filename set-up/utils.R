@@ -106,7 +106,7 @@ matilda_conc_driven <- function(param_chunks,
 #'
 #' @return A named list of results, where each element corresponds to a scenario and contains the combined output from all parameter chunks.
 #' 
-matilda_emission_driven <- function(params_chunks,
+matilda_emission_driven <- function(param_chunks,
                                     ini_list,
                                     save_years = 1850:2200,
                                     save_vars = c("global_tas",
@@ -114,7 +114,7 @@ matilda_emission_driven <- function(params_chunks,
                                                   "CO2_concentrations",
                                                   "ocean_uptake",
                                                   "RF_tot"),
-                                    ncores = parallel::detectCores() - 1) {
+                                    n_cores = parallel::detectCores() - 1) {
   # create cluster
   cl <- parallel::makeCluster(n_cores)
   
@@ -125,7 +125,7 @@ matilda_emission_driven <- function(params_chunks,
     iterate_model(
       core = core,
       params = chunk,
-      save_years = svae_vars,
+      save_years = save_years,
       save_vars = save_vars
     )
   }
@@ -146,18 +146,18 @@ matilda_emission_driven <- function(params_chunks,
   
   # Run in parallel
   result <- parallel::parLapply(cl, names(ini_list), function(scenario_name) {
-    scenario_ini <- ini - list[[scenario_name]]
+    scenario_ini <- ini_list[[scenario_name]]
     
     result_list <- lapply(param_chunks, function(chunk) {
       core <- newcore(scenario_ini, name = scenario_name)
-      run_chunk_emission_driven(core, save_years, save_vars)
+      run_chunk_emission_driven(core, chunk, save_years, save_vars)
     })
     
     return(result_list)
   })
   
   names(result) <- names(ini_list)
-  parallel::stopCluster()
+  parallel::stopCluster(cl)
   
   return(result)
 }

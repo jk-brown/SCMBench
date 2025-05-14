@@ -51,7 +51,7 @@ normalize_values <- function(observed_data, modeled_data, reference_start_year, 
 }
 
 ## Running normalization on historical gmst to align with Hector output
-hist_temp_norm <- normalize_values(hist_temp, matilda::hector_result, 1961, 1990)
+hist_temp_norm <- normalize_values(hist_temp, matilda::hector_result, 1850, 1900)
 
 ## Saving .csv of normalized gmst
 write.csv(hist_temp_norm, "data/observations/annual_gmst_normalized.csv", quote = FALSE, row.names = FALSE)
