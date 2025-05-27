@@ -1,0 +1,207 @@
+---
+title: "Experiment 1 - Concentration Full"
+author: "Joe Brown"
+date: "2025-05-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Goal
+
+The goal for this file is to begin by running Hector + Matilda in concentration-driven mode. This means that we will be constraining history to CO2 concentrations and then using perturbed parameters to make future projections. 
+
+Experiment 1 - running Hector + Matilda prescribing CO2 concentrations for the historic and future time periods. 
+
+# Set-up
+
+## Load libraries and utils 
+
+```{r, message=FALSE}
+
+source("set-up/libraries.R")
+source("set-up/utils.R")
+
+```
+
+## Load ini files
+
+```{r}
+
+source("set-up/load_ini.R")
+
+```
+
+## Load perturbed parameter data frame
+
+This step loads a pre-generated perturbed parameter ensemble (PPE) that will be used across all Hector + Matilda experiments. The PPE was generated once using Hector defaults and saved to ensure consistent sampling across model configurations. Parameters are automatically "chunked" for parallel processing.
+
+```{r}
+
+source("set-up/load_params.R")
+
+```
+
+# Experiment 1 Running the model: Constrained to C02 in history & future
+
+The goal here is to run Hector + Matilda in "concentration-driven" mode by constraining historical and future CO2 concentrations.
+
+## Load CO2 data for constraint
+
+```{r}
+
+constraint_data_exp1 <- read.csv("data/processed/CO2_constrain_full.csv")
+
+```
+
+## Run model 
+
+Run Hector over entire PPE for each SSP scenario in the scenario list
+
+```{r}
+start_time <- Sys.time()
+matilda_result_exp1 <- matilda_conc_driven(param_chunks, ini_list, constraint_data_exp1)
+end_time <- Sys.time()
+
+elapsed_time <- end_time - start_time
+print(elapsed_time)
+
+```
+
+Correct the run_numbers for each of element in the result list
+
+```{r}
+
+matilda_result_exp1 <- fix_run_numbers(matilda_result_exp1)
+
+```
+
+## Check for and deal with NAs
+
+Get the runs that produced NAs:
+```{r}
+
+lapply(matilda_result_exp1, function(df) {
+  
+  get_na_runs(df, verbose = T)
+  
+})
+
+```
+Remove NAs if desired:
+```{r}
+
+matilda_result_exp1 <- lapply(matilda_result_exp1, function(df) {
+  
+  remove_na_runs(df, verbose = T)
+  
+})
+
+```
+
+# Save model runs 
+
+```{r}
+# define directory path
+result_dir <- here("output", "model_results")
+
+# create directory if one does not exist
+if (!dir.exists(result_dir)) {
+  dir.create(result_dir, recursive = T)
+}
+
+# identify the file path
+file_name <- "exp1_matilda_results_concentration_full.RDS"
+file_path <- file.path(result_dir, file_name)
+
+# save 
+saveRDS(matilda_result_exp1, file_path)
+```
+
+
+# Normalize GMST and GSAT 
+
+Normalize temperature data (GMST) to the 1850-1900 reference period to use for weighting the ensemble members.
+
+```{r}
+normalize_exp1_result <- lapply(matilda_result_exp1, function(df) {
+  
+  normalize_to_reference(df, 1850, 1900, variables = "gmst")
+  
+})
+
+```
+
+
+# Weight ensemble
+
+Weight the ensembles from experiment one using the GMST and CO2 scoring criterion.
+
+Load the scoring criterion:
+```{r}
+
+source("set-up/load_scoring_criterion.R")
+
+```
+
+Compute weights:
+```{r}
+
+weighted_result_exp1 <- lapply(matilda_result_exp1, function(df) {
+  
+  weight_ensemble(df, gmst_criterion, co2_criterion)
+  
+})
+
+```
+
+Identify missing rows due to NAs in model output:
+```{r}
+
+missing_runs <- lapply(weighted_result_exp1, function(df) {
+  
+  setdiff(1:1000, df$run_number)
+  
+})
+
+# print missing runs 
+for (scenario in names(missing_runs)) {
+  cat("missing runs for", scenario, ":\n")
+  print(missing_runs[[scenario]])
+  cat("\n")
+}
+
+```
+
+## Plotting ensembles with weighting
+
+Merge weights with the model results using `run_number`.
+```{r}
+
+weighted_result_exp1 <- Map(function(weights, results) {
+  
+  merge(results, weights, by = "run_number")
+  
+}, weights_exp1, matilda_result_exp1)
+
+weighted_result_exp1_df <- do.call(rbind, weighted_result_exp1)
+
+```
+
+Plot gmst ensemble with weights
+```{r}
+ggplot(data = subset(weighted_result_exp1_df, variable == "global_tas" & year < 2101)) +
+  geom_line(aes(x = year, y = value, group = run_number, color = mc_weight, alpha = mc_weight)) +
+  scale_color_gradient(low = "dodgerblue", high = "dodgerblue4")+
+  scale_alpha_continuous(range = c(0, 1)) +
+  geom_line(data = hist_temp_norm, aes(x = year, y = value), color = "red")+
+  facet_wrap(~scenario, scales = "free_y") +
+  theme_light()
+
+```
+
+It makes sense that these are the same since I am using the prescribed concentrations through the end of the projection. Therefore, all the scenarios are using the same concentrations to project temperature and other variables. 
+
+# Computing metrics and summary statistics

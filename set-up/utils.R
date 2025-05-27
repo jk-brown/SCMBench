@@ -198,3 +198,125 @@ fix_run_numbers <- function(result_list) {
   
   return(fixed_results)
 }
+
+#' Normalize specified variable(s) in an ensemble to a reference period
+#' 
+#' Subtracts the mean of each specified variable over a defined reference period. 
+#' This aligns temperature variables like GMST or GSAT (global_tas) to a common baseline. 
+#' All variables not specified in the function are left unchanged.
+#'
+#' @param df A data frame containing ensemble output in long format. This is the typical output from Hector.
+#' @param reference_start Integer. First year of the reference period (e.g., 1850).
+#' @param reference_end Integer. Last year of the reference period (e.g., 1900).
+#' @param variables A character vector of variable names to normalize (default: \code{"gmst"}).
+#'
+#' @return A data frame of the same structure as \code{df}, with the specified variable(s) normalized to their reference-period mean. 
+#' All other variables are returned unchanged.
+#'
+normalize_to_reference <- function(df, reference_start, reference_end, variables = c("gmst")) {
+  
+  # Filter data for the reference period and target variables only
+  reference_data <- df %>%
+    filter(year >= reference_start, year <= reference_end, variable %in% variables)
+  
+  # Compute the mean value for each run_number and variable during the reference period
+  reference_mean <- reference_data %>%
+    group_by(run_number, variable) %>%
+    summarise(reference_mean = mean(value, na.rm = TRUE), .groups = "drop")
+  
+  # Join baseline means and adjust only the specified variables
+  df <- df %>%
+    left_join(reference_mean, by = c("run_number", "variable")) %>%
+    mutate(value = ifelse(variable %in% variables, value - reference_mean, value)) %>%
+    select(-reference_mean)
+  
+  return(df)
+}
+
+
+#' Weight ensemble members by GMST and CO₂ performance
+#'
+#' Applies Bayesian likelihood-based scoring to ensemble members based on their agreement with observed 
+#' GMST and CO2 concentrations. Scores are combined into a single weight using multi-criteria weighting.
+#'
+#' @param df A data frame of model output in long format, including columns.
+#' @param gmst_criterion A criterion object specifying observed GMST data and the years to compare against.
+#' @param co2_criterion A criterion object specifying observed CO₂ concentration data and the years to compare against.
+#'
+#' @return A data frame with columns \code{run_number} and \code{weights} 
+#'   representing normalized multi-criteria weights for each ensemble member.
+#'
+weight_ensemble <- function(df, gmst_criterion, co2_criterion) {
+  
+  # Score by GMST
+  weights_temp <- score_runs(df,
+                             criterion = gmst_criterion,
+                             score_function = score_bayesian)
+  
+  # Score by CO2
+  weights_co2 <- score_runs(df,
+                            criterion = co2_criterion,
+                            score_function = score_bayesian)
+  
+  # Combine
+  weights_list <- list(weights_temp, weights_co2)
+  weights_combined <- multi_criteria_weighting(weights_list)
+  
+  return(weights_combined)
+}
+
+
+#' Identify ensemble members with NA values
+#'
+#' @param df A data frame of model output.
+#' @param verbose Logical. If TRUE, prints run numbers with NA values.
+#'
+#' @return A vector of run numbers with NA values in the `value` column.
+#' 
+get_na_runs <- function(df, verbose = TRUE) {
+  
+  # filter the rows with NAs 
+  na_rows <- df %>% 
+    filter(is.na(value))
+  
+  # store the unique run-numbers with NAs
+  failed_runs <- unique(na_rows$run_number)
+  
+  # if verbose is true and there is at least one NA run, print the run_numbers with NAs
+  if(verbose && length(failed_runs) > 0) {
+    cat("NAs are present in", length(failed_runs), "runs: \n")
+    print(failed_runs)
+  }
+  
+  return(failed_runs)
+}
+
+
+#' Remove ensemble members with any NA values
+#'
+#' @param df A data frame of model output.
+#' @param verbose Logical. If TRUE, prints number of removed runs.
+#'
+#' @return A cleaned data frame with NA-containing runs removed.
+#' 
+remove_na_runs <- function(df, verbose = TRUE) {
+  
+  failed_runs <- get_na_runs(df, verbose = FALSE)
+  
+  if(length(failed_runs) > 0) {
+    
+    if(verbose) {
+      cat("Removing", length(failed_runs), "runs with NA values.\n")
+    }
+    
+    df <- df %>% 
+      filter(!run_number %in% failed_runs)
+  } 
+  
+  else if (verbose) {
+    cat("No NA values found. No runs removed.\n")
+  }
+  
+  return(df)
+  
+}
