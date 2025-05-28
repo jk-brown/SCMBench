@@ -10,24 +10,47 @@
 # source libraries 
 source("set-up/libraries.R")
 
-# load data 
-CO2_constrain_historical <- read.csv("data/processed/raw/ssp245_emiss-constraints_rf.csv", stringsAsFactors = FALSE, comment.char = ";")
+#' Process scenario CO2 constraint data
+#'
+#' Reads a raw emissions constraint CSV file from Hector, selects and renames the 
+#' relevant columns (Date and CO2_constrain), and saves the processed data to a new csv.
+#' 
+#' @param input_path Character. Path to the raw csv file. 
+#' @param output_path Character. Path to save the processed csv file.
+#'
+#' @returns No return value: writes a cleaned csv file to \code{output_path}
+#' 
+process_constraint_data_hist <- function(input_path, output_path) {
+  
+  # Read data
+  data <- read.csv(input_path, stringsAsFactors = FALSE, comment.char = ";")
+  
+  # Select and rename columns
+  data <- data %>%
+    dplyr::select(Date, CO2_constrain) %>%
+    rename(year = Date) %>% 
+    filter(year <= 2024)
+  
+  # Save processed data
+  write.csv(data, output_path, row.names = FALSE)
+  
+}
 
-# select the Date and CO2_constrain column
-# change Date column name to `year`
-# filter year < 2024 
-CO2_constrain_historical <- CO2_constrain_historical |>
-  dplyr::select(Date, CO2_constrain) |>
-  rename(year = Date) |>
-  filter(year <= 2024)
+## Processing data 
+# ssp names
+ssp_scenarios <- c("ssp119", "ssp126", "ssp245", "ssp370", "ssp585")
+# directory where raw data are stored
+raw_dir <- here("data", "processed", "raw")
+# directory where processed data are saved
+processed_dir <- here("data", "processed")
 
-# save 
-# directory
-processed_data_dir <- here("data", "processed")
+# Process constraint files for all scenarios
+lapply(ssp_scenarios, function(ssp) {
+  
+  input_path <- file.path(raw_dir, paste0(ssp, "_emiss-constraints_rf.csv"))
+  output_path <- file.path(processed_dir, paste0(ssp, "_CO2_constraint-historical.csv"))
+  
+  process_constraint_data_hist(input_path, output_path)
+})
 
-# identify the file path
-file_name <- "CO2_constrain_historical.csv"
-file_path <- file.path(processed_data_dir, file_name)
 
-# save parameters
-write.csv(CO2_constrain_historical, file_path, row.names = FALSE)
