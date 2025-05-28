@@ -127,7 +127,7 @@ if (!dir.exists(result_dir)) {
 }
 
 # identify the file path
-file_name <- "exp2_matilda_results_concentration_historic_NA-rm.RDS"
+file_name <- "exp3_matilda_results_concentration_historic_NA-rm.RDS"
 file_path <- file.path(result_dir, file_name)
 
 # save 
