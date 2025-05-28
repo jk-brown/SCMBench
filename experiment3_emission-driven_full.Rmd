@@ -90,3 +90,218 @@ file_path <- file.path(result_dir, file_name)
 # save
 saveRDS(matilda_result, file_path)
 ```
+
+## Check for and deal with NAs
+
+Get the runs that produced NAs:
+```{r}
+
+lapply(matilda_result_exp3, function(df) {
+  
+  get_na_runs(df, verbose = T)
+  
+})
+
+```
+
+Remove NAs if desired:
+```{r}
+
+matilda_result_exp3 <- lapply(matilda_result_exp3, function(df) {
+  
+  remove_na_runs(df, verbose = T)
+  
+})
+
+```
+
+# Save model runs 
+
+```{r}
+# define directory path
+result_dir <- here("output", "model_results")
+
+# create directory if one does not exist
+if (!dir.exists(result_dir)) {
+  dir.create(result_dir, recursive = T)
+}
+
+# identify the file path
+file_name <- "exp2_matilda_results_concentration_historic_NA-rm.RDS"
+file_path <- file.path(result_dir, file_name)
+
+# save 
+saveRDS(matilda_result_exp3, file_path)
+```
+
+
+# Normalize GMST and GSAT 
+
+Normalize temperature data (GMST) to the 1850-1900 reference period to use for weighting the ensemble members.
+
+```{r}
+normalize_exp3_result <- lapply(matilda_result_exp3, function(df) {
+  
+  normalize_to_reference(df, 1850, 1900, variables = "gmst")
+  
+})
+
+```
+
+
+# Weight ensemble
+
+Weight the ensembles from experiment one using the GMST and CO2 scoring criterion.
+
+Load the scoring criterion:
+```{r}
+
+source("set-up/load_scoring_criterion.R")
+
+```
+
+Compute weights:
+```{r}
+
+weights_exp3 <- lapply(matilda_result_exp3, function(df) {
+  
+  weight_ensemble(df, gmst_criterion, co2_criterion)
+  
+})
+
+```
+
+Identify missing rows due to NAs in model output:
+```{r}
+
+missing_runs <- lapply(weights_exp3, function(df) {
+  
+  setdiff(1:1000, df$run_number)
+  
+})
+
+# print missing runs 
+for (scenario in names(missing_runs)) {
+  cat("missing runs for", scenario, ":\n")
+  print(missing_runs[[scenario]])
+  cat("\n")
+}
+
+```
+
+## Plotting ensembles with weighting
+
+Merge weights with the model results using `run_number`.
+```{r}
+
+weighted_result_exp3 <- Map(function(weights, results) {
+  
+  merge(results, weights, by = "run_number")
+  
+}, weights_exp3, matilda_result_exp3)
+
+weighted_result_exp3_df <- do.call(rbind, weighted_result_exp3)
+
+```
+
+Plot gmst ensemble with weights:
+```{r}
+ggplot(data = subset(weighted_result_exp3_df, variable == "gmst" & year < 2101)) +
+  geom_line(aes(x = year, y = value, group = run_number, color = mc_weight, alpha = mc_weight)) +
+  scale_color_gradient(low = "dodgerblue", high = "dodgerblue4")+
+  scale_alpha_continuous(range = c(0, 1)) +
+  geom_line(data = hist_temp_norm, aes(x = year, y = value), color = "red")+
+  facet_wrap(~scenario) +
+  theme_light()
+
+```
+
+Just a quick visualization to see if everything is looking good so far. This always makes for a decent preliminary figure to show whether the weighting process is being effective.
+
+# Compute median warming for each 
+
+Here we want to compute the probability distribution of warming.
+
+First normalize values for `global_tas` to the 2005-2014 reference period:
+
+```{r}
+normalize_exp3_result_gsat <- lapply(matilda_result_exp3, function(df) {
+  
+  normalize_to_reference(df, 2005, 2014, variables = "global_tas")
+  
+})
+```
+
+Create new metric object:
+maybe Add this to experimental set-up script so I can use it for all the experiments. 
+```{r}
+# creating median end-of-century warming (GSAT)
+eoc_warming <- new_metric(GLOBAL_TAS(), 2081:2100, median)
+
+```
+
+Use the eoc_warming metric to compute median eoc warming for each run:
+```{r}
+# computing median end-of-century warming
+eoc_warming_values_exp3 <- lapply(names(normalize_exp3_result_gsat), function(scenario_name) {
+  
+  df <- normalize_exp3_result_gsat[[scenario_name]]
+   
+  metric_values <- metric_calc(df, eoc_warming)
+  
+  metric_values$scenario <- scenario_name
+  
+  return(metric_values)
+   
+ })
+
+# merge weights with new metrics 
+weighted_metrics_exp3 <- Map(function(weights, metric_results) {
+  
+  merge(metric_results, weights, by = "run_number")
+  
+}, weights_exp3, eoc_warming_values_exp3)
+
+```
+
+Make a weighted metrics dataframe for plotting:
+```{r}
+
+weighted_metrics_exp3_df <- do.call(rbind, weighted_metrics_exp3)
+
+```
+
+Save the weighted metrics data frame:
+
+```{r}
+# define directory path
+result_dir <- here("output", "warming_results")
+
+# create directory if one does not exist
+if (!dir.exists(result_dir)) {
+  dir.create(result_dir, recursive = T)
+}
+
+# identify the file path
+file_name <- "exp3_weighted_gsat_metric.csv"
+file_path <- file.path(result_dir, file_name)
+
+# save 
+write.csv(weighted_metrics_exp3_df, file_path)
+
+```
+
+Preliminary visualization of warming PDF. Here we want to plot a weighted PDF curve with a facet for scenario:
+```{r}
+
+ggplot(weighted_metrics_exp3_df, aes(x = metric_result)) +
+  stat_density(aes(weight = mc_weight), geom = "line", color = "dodgerblue", size = 1.2, adjust = 1) +
+  labs(
+    title = "Likelihood-weighted Warming Distribution",
+    x = "End-of-century Warming (°C)",
+    y = "Density (weighted)"
+  ) +
+  theme_light() +
+  facet_wrap(~scenario)
+
+```

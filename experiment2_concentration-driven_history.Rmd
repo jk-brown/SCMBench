@@ -21,7 +21,7 @@ The goal here is to run Hector + Matilda in "concentration-driven" mode by const
 
 ```{r}
 
-constraint_data_exp2 <- read.csv("data/processed/CO2_constrain_historical.csv")
+constraint_data_exp2 <- read.csv("data/processed/ssp245_CO2_constraint-historical.csv")
 
 ```
 
@@ -249,6 +249,7 @@ write.csv(weighted_metrics_exp2_df, file_path)
 
 Preliminary visualization of warming PDF. Here we want to plot a weighted PDF curve with a facet for scenario:
 ```{r}
+
 ggplot(weighted_metrics_exp2_df, aes(x = metric_result)) +
   stat_density(aes(weight = mc_weight), geom = "line", color = "dodgerblue", size = 1.2, adjust = 1) +
   labs(
@@ -258,6 +259,7 @@ ggplot(weighted_metrics_exp2_df, aes(x = metric_result)) +
   ) +
   theme_light() +
   facet_wrap(~scenario)
+
 ```
 OKAY that works -- and I will want to overlay the other experiments to show how the warming distribution is affected by the historical configuration. 
 

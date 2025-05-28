@@ -19,7 +19,7 @@
 #'
 matilda_conc_driven <- function(param_chunks,
                                 ini_list,
-                                constraint_df,
+                                constraint_list,
                                 save_years = 1850:2200,
                                 save_vars = c("global_tas",
                                               "gmst",
@@ -59,7 +59,7 @@ matilda_conc_driven <- function(param_chunks,
     varlist = c(
       "param_chunks",
       "ini_list",
-      "constraint_df",
+      "constraint_data_list",
       "run_chunk_with_prescribed_co2",
       "newcore",
       "iterate_model",
@@ -74,10 +74,11 @@ matilda_conc_driven <- function(param_chunks,
   # Run in parallel
   result <- parallel::parLapply(cl, names(ini_list), function(scenario_name) {
     scenario_ini <- ini_list[[scenario_name]]
+    scenario_constraint <- constraint_data_list[[scenario_name]]
     
     result_list <- lapply(param_chunks, function(chunk) {
       core <- newcore(scenario_ini, name = scenario_name)
-      run_chunk_with_prescribed_co2(core, chunk, constraint_df, save_years, save_vars)
+      run_chunk_with_prescribed_co2(core, chunk, scenario_constraint, save_years, save_vars)
     })
     
     return(result_list)

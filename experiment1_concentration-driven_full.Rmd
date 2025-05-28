@@ -51,9 +51,19 @@ The goal here is to run Hector + Matilda in "concentration-driven" mode by const
 ## Load CO2 data for constraint
 
 ```{r}
+# scenario names
+ssp_scenarios <- c("ssp119", "ssp126", "ssp245", "ssp370", "ssp585")
+# directory where constraint data are saved
+constraint_dir <- here("data", "processed")
 
-constraint_data_exp1 <- read.csv("data/processed/CO2_constrain_full.csv")
-
+# Load scenario specific co2 constraint data
+constraint_data_list <- lapply(ssp_scenarios, function(ssp) {
+  
+  read.csv(file.path(constraint_dir, paste0(ssp, "_CO2_constraint-full.csv")))
+  
+})
+# edit list names
+names(constraint_data_list) <- names(ini_list)
 ```
 
 ## Run model 
