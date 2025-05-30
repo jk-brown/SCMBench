@@ -123,7 +123,7 @@ if (!dir.exists(result_dir)) {
 }
 
 # identify the file path
-file_name <- "exp1_matilda_results_concentration_full.RDS"
+file_name <- "exp1_matilda_results_concentration_full_NA-rm.RDS"
 file_path <- file.path(result_dir, file_name)
 
 # save 
@@ -159,7 +159,7 @@ source("set-up/load_scoring_criterion.R")
 Compute weights:
 ```{r}
 
-weighted_result_exp1 <- lapply(matilda_result_exp1, function(df) {
+weights_exp1 <- lapply(matilda_result_exp1, function(df) {
   
   weight_ensemble(df, gmst_criterion, co2_criterion)
   
@@ -170,9 +170,9 @@ weighted_result_exp1 <- lapply(matilda_result_exp1, function(df) {
 Identify missing rows due to NAs in model output:
 ```{r}
 
-missing_runs <- lapply(weighted_result_exp1, function(df) {
+missing_runs <- lapply(weights_exp1, function(df) {
   
-  setdiff(1:1000, df$run_number)
+  setdiff(1:n, df$run_number)
   
 })
 
@@ -207,11 +207,96 @@ ggplot(data = subset(weighted_result_exp1_df, variable == "global_tas" & year < 
   scale_color_gradient(low = "dodgerblue", high = "dodgerblue4")+
   scale_alpha_continuous(range = c(0, 1)) +
   geom_line(data = hist_temp_norm, aes(x = year, y = value), color = "red")+
-  facet_wrap(~scenario, scales = "free_y") +
+  facet_wrap(~scenario) +
   theme_light()
 
 ```
 
-It makes sense that these are the same since I am using the prescribed concentrations through the end of the projection. Therefore, all the scenarios are using the same concentrations to project temperature and other variables. 
+# Compute median warming for each 
 
-# Computing metrics and summary statistics
+Here we want to compute the probability distribution of warming.
+
+First normalize values for `global_tas` to the 2005-2014 reference period:
+
+```{r}
+normalize_exp1_result_gsat <- lapply(matilda_result_exp1, function(df) {
+  
+  normalize_to_reference(df, 2005, 2014, variables = "global_tas")
+  
+})
+```
+
+Create new metric object:
+maybe Add this to experimental set-up script so I can use it for all the experiments. 
+```{r}
+# creating median end-of-century warming (GSAT)
+eoc_warming <- new_metric(GLOBAL_TAS(), 2081:2100, median)
+
+```
+
+Use the eoc_warming metric to compute median eoc warming for each run:
+```{r}
+# computing median end-of-century warming
+eoc_warming_values_exp1 <- lapply(names(normalize_exp1_result_gsat), function(scenario_name) {
+  
+  df <- normalize_exp1_result_gsat[[scenario_name]]
+   
+  metric_values <- metric_calc(df, eoc_warming)
+  
+  metric_values$scenario <- scenario_name
+  
+  return(metric_values)
+   
+ })
+
+# merge weights with new metrics 
+weighted_metrics_exp1 <- Map(function(weights, metric_results) {
+  
+  merge(metric_results, weights, by = "run_number")
+  
+}, weights_exp1, eoc_warming_values_exp1)
+
+```
+
+Make a weighted metrics dataframe for plotting:
+```{r}
+
+weighted_metrics_exp1_df <- do.call(rbind, weighted_metrics_exp1)
+
+```
+
+Save the weighted metrics data frame:
+
+```{r}
+# define directory path
+result_dir <- here("output", "warming_results")
+
+# create directory if one does not exist
+if (!dir.exists(result_dir)) {
+  dir.create(result_dir, recursive = T)
+}
+
+# identify the file path
+file_name <- "exp1_weighted_gsat_metric.csv"
+file_path <- file.path(result_dir, file_name)
+
+# save 
+write.csv(weighted_metrics_exp1_df, file_path)
+
+```
+
+Preliminary visualization of warming PDF. Here we want to plot a weighted PDF curve with a facet for scenario:
+```{r}
+
+ggplot(weighted_metrics_exp1_df, aes(x = metric_result)) +
+  stat_density(aes(weight = mc_weight), geom = "line", color = "dodgerblue", size = 1.2, adjust = 1) +
+  labs(
+    title = "Likelihood-weighted Warming Distribution",
+    x = "End-of-century Warming (°C)",
+    y = "Density (weighted)"
+  ) +
+  theme_light() +
+  facet_wrap(~scenario)
+
+```
+OKAY that works -- and I will want to overlay the other experiments to show how the warming distribution is affected by the historical configuration. 

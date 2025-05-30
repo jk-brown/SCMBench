@@ -112,7 +112,7 @@ matilda_emission_driven <- function(param_chunks,
                                     save_years = 1850:2200,
                                     save_vars = c("global_tas",
                                                   "gmst",
-                                                  "CO2_concentrations",
+                                                  "CO2_concentration",
                                                   "ocean_uptake",
                                                   "RF_tot"),
                                     n_cores = parallel::detectCores() - 1) {
