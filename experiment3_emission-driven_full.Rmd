@@ -176,7 +176,7 @@ Identify missing rows due to NAs in model output:
 
 missing_runs <- lapply(weights_exp3, function(df) {
   
-  setdiff(1:1000, df$run_number)
+  setdiff(1:n, df$run_number)
   
 })
 

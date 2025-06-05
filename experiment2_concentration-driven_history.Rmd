@@ -13,6 +13,36 @@ knitr::opts_chunk$set(echo = TRUE)
 
 The goal for this file is to begin by running Hector + Matilda in concentration-driven mode in history and then switching to emissions-driven future. This means that we will be constraining history to CO2 concentrations and then using emissions with the carbon cycle and perturbed parameters to make future projections.
 
+# Set-up
+
+## Load libraries and utils 
+
+```{r, message=FALSE}
+
+source("set-up/libraries.R")
+source("set-up/utils.R")
+
+```
+
+## Load ini files
+
+```{r}
+
+source("set-up/load_ini.R")
+
+```
+
+## Load perturbed parameter data frame
+
+This step loads a pre-generated perturbed parameter ensemble (PPE) that will be used across all Hector + Matilda experiments. The PPE was generated once using Hector defaults and saved to ensure consistent sampling across model configurations. Parameters are automatically "chunked" for parallel processing.
+
+```{r}
+
+source("set-up/load_params.R")
+
+```
+
+
 Experiment 2 Running the model: Constrained to C02 in history with emissions driven future
 
 The goal here is to run Hector + Matilda in "concentration-driven" mode by constraining historical CO2 concentrations.
@@ -20,18 +50,28 @@ The goal here is to run Hector + Matilda in "concentration-driven" mode by const
 ## Load CO2 data for constraint
 
 ```{r}
+# scenario names
+ssp_scenarios <- c("ssp119", "ssp126", "ssp245", "ssp370", "ssp585")
+# directory where constraint data are saved
+constraint_dir <- here("data", "processed")
 
-constraint_data_exp2 <- read.csv("data/processed/ssp245_CO2_constraint-historical.csv")
+# Load scenario specific co2 constraint data
+constraint_data_list <- lapply(ssp_scenarios, function(ssp) {
+  
+  read.csv(file.path(constraint_dir, paste0(ssp, "_CO2_constraint-historical.csv")))
+  
+})
 
+# edit list names
+names(constraint_data_list) <- names(ini_list)
 ```
-
 ## Run model 
 
 Run Hector over entire PPE for each SSP scenario in the scenario list
 
 ```{r}
 start_time <- Sys.time()
-matilda_result_exp2 <- matilda_conc_driven(param_chunks, ini_list, constraint_data_exp2)
+matilda_result_exp2 <- matilda_conc_driven(param_chunks, ini_list, constraint_data_list)
 end_time <- Sys.time()
 
 elapsed_time <- end_time - start_time
@@ -83,7 +123,7 @@ if (!dir.exists(result_dir)) {
 }
 
 # identify the file path
-file_name <- "exp2_matilda_results_concentration_historic.RDS"
+file_name <- "exp2_matilda_results_concentration_historic_NA-rm.RDS"
 file_path <- file.path(result_dir, file_name)
 
 # save 
@@ -132,7 +172,7 @@ Identify missing rows due to NAs in model output:
 
 missing_runs <- lapply(weights_exp2, function(df) {
   
-  setdiff(1:1000, df$run_number)
+  setdiff(1:n, df$run_number)
   
 })
 
