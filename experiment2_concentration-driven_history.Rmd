@@ -304,3 +304,52 @@ ggplot(weighted_metrics_exp2_df, aes(x = metric_result)) +
 OKAY that works -- and I will want to overlay the other experiments to show how the warming distribution is affected by the historical configuration. 
 
 
+## Computing probabilities 
+
+Here I want to compute probabilities for a range of different temperatures.
+
+```{r}
+# define bins that represent the temperature ranges of interest
+temp_ranges <- c(0, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, Inf)
+
+# computing probabilities
+temp_prob_exp2 <- lapply(names(weighted_metrics_exp2), function(df_name) {
+  
+  # copy data 
+  df <- weighted_metrics_exp2[[df_name]]
+  
+  # run probability calculator
+  prob_result <- prob_calc(df$metric_result, 
+                           bins = temp_ranges, 
+                           scores = df$mc_weight)
+  
+  # add scenario column to the result
+  prob_result$scenario <- df_name
+  
+  return(prob_result)
+})
+
+# give element names 
+names(temp_prob_exp2) <- names(weights_exp2)
+
+```
+
+Save probability data:
+
+```{r}
+# define directory path
+result_dir <- here("output", "probability_results")
+
+# create directory if one does not exist
+if (!dir.exists(result_dir)) {
+  dir.create(result_dir, recursive = T)
+}
+
+# identify the file path
+file_name <- "exp2_weighted_gsat_probability.rds"
+file_path <- file.path(result_dir, file_name)
+
+# save 
+saveRDS(temp_prob_exp2, file_path)
+```
+
