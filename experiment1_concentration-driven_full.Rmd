@@ -202,15 +202,29 @@ weighted_result_exp1_df <- do.call(rbind, weighted_result_exp1)
 
 Plot gmst ensemble with weights
 ```{r}
-ggplot(data = subset(weighted_result_exp1_df, variable == "global_tas" & year < 2101)) +
+ggplot(data = subset(weighted_result_exp1_df, variable == "CO2_concentration" & year < 2101)) +
   geom_line(aes(x = year, y = value, group = run_number, color = mc_weight, alpha = mc_weight)) +
   scale_color_gradient(low = "dodgerblue", high = "dodgerblue4")+
   scale_alpha_continuous(range = c(0, 1)) +
-  geom_line(data = hist_temp_norm, aes(x = year, y = value), color = "red")+
+  #geom_line(data = hist_temp_norm, aes(x = year, y = value), color = "red")+
   facet_wrap(~scenario) +
   theme_light()
 
 ```
+# Calculate summaries 
+
+```{r}
+co2_summary_exp1 <- weighted_metrics_exp1_df %>% 
+  subset(variable == "global_tas" & year < 2101) %>% 
+  group_by(scenario, year) %>% 
+  summarize(median = weighted.quantile(value, w = mc_weight, probs = c(0.5)), 
+            ci_05 = wieghted.quantile(value, w = mc_weight, probs = c(0.05)), 
+            ci_95 = weighted.quantile(value, x = mc_weight, probs = c(0.95)), 
+          .groups = drop)
+  
+```
+
+
 
 # Compute median warming for each 
 
@@ -350,3 +364,22 @@ file_path <- file.path(result_dir, file_name)
 saveRDS(temp_prob_exp1, file_path)
 ```
 
+Create a probability df and save:
+```{r}
+exp1_probability_df <- do.call(rbind, temp_prob_exp1)
+
+# define directory path
+result_dir <- here("output", "probability_results")
+
+# create directory if one does not exist
+if (!dir.exists(result_dir)) {
+  dir.create(result_dir, recursive = T)
+}
+
+# identify the file path
+file_name <- "exp1_weighted_gsat_probability.csv"
+file_path <- file.path(result_dir, file_name)
+
+# save 
+write.csv(exp1_probability_df, file_path, row.names = F)
+```

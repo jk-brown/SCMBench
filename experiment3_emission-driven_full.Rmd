@@ -353,5 +353,25 @@ file_name <- "exp3_weighted_gsat_probability.rds"
 file_path <- file.path(result_dir, file_name)
 
 # save 
-saveRDS(temp_prob_exp2, file_path)
+saveRDS(temp_prob_exp3, file_path)
+```
+
+Create a probability df and save:
+```{r}
+exp3_probability_df <- do.call(rbind, temp_prob_exp3)
+
+# define directory path
+result_dir <- here("output", "probability_results")
+
+# create directory if one does not exist
+if (!dir.exists(result_dir)) {
+  dir.create(result_dir, recursive = T)
+}
+
+# identify the file path
+file_name <- "exp3_weighted_gsat_probability.csv"
+file_path <- file.path(result_dir, file_name)
+
+# save 
+write.csv(exp3_probability_df, file_path, row.names = F)
 ```

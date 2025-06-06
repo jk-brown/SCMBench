@@ -66,6 +66,7 @@ ggplot() +
   ) +
   theme_light() +
   facet_wrap(~scenario, scales = "free_x")
+ggsave("temp_dist_comparison.png")
 ```
 
 This is just a preliminary figure 
@@ -85,6 +86,8 @@ ggplot(data = combined_metrics, aes(x = config, y = metric_result, weight = mc_w
   guides(size = "none", alpha = "none")+
   theme_light() +
   theme(axis.text.x = element_blank()) 
+
+ggsave("temp_violin_comparison.png")
 ```
 
 This figure illustrates how different treatments of historical atmospheric CO2 in simple climate models fundamentally alter the shape and spread of future warming projections. While most reduced-complexity climate models adopt a concentration-driven approach in the historical period, a strategy that ensures close alignment with observations and seems intuitively sound, this experiment reveals that doing so significantly narrows the projected uncertainty range. Fully emissions-driven simulations, by contrast, allow historical carbon cycle uncertainty to propagate forward, resulting in broader and more dispersed warming distributions. Even the hybrid setup, where CO2 concentrations are prescribed only during the historical period, dampens ensemble spread in a way that persists into the future. These differences arise not from parametric variation, but from the structural assumptions embedded in how we treat historical carbon dynamics. This finding underscores that concentration-driven setups, while practical and observationally anchored, come with the cost of suppressing uncertainty in the Earth system's response to emissions. Emissions-driven historical runs, despite appearing redundant in the presence of observational CO2 data, offer a critical view into the range of plausible carbon cycle behaviors that can seed future divergence. This experiment highlights that uncertainty in future warming is not just driven by emissions or physical parameters, but also by how we represent and constrain the past, a methodological choice that deserves more scrutiny in ensemble design and uncertainty communication.
@@ -184,6 +187,8 @@ ggplot() +
     axis.ticks.x = element_blank(),        # remove x-axis tick marks
     legend.position = "right"              # keep color legend visible
   )
+
+ggsave("temp-box_comparison.png")
 ```
 
 ## Visualizing parameter sensitivtiy or something
