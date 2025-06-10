@@ -72,25 +72,6 @@ matilda_result_exp3 <- fix_run_numbers(matilda_result_exp3)
 
 ```
 
-# Save model runs 
-
-```{r}
-# define directory path
-result_dir <- here("output", "model_results")
-
-# create directory if one does not exist
-if (!dir.exists(result_dir)) {
-  dir.create(result_dir, recursive = T)
-}
-
-# identify the file path
-file_name <- "exp3_matilda_results_emission.RDS"
-file_path <- file.path(result_dir, file_name)
-
-# save
-saveRDS(matilda_result, file_path)
-```
-
 ## Check for and deal with NAs
 
 Get the runs that produced NAs:
@@ -306,7 +287,6 @@ ggplot(weighted_metrics_exp3_df, aes(x = metric_result)) +
 
 ```
 
-
 ## Computing probabilities 
 
 Here I want to compute probabilities for a range of different temperatures.
@@ -374,4 +354,291 @@ file_path <- file.path(result_dir, file_name)
 
 # save 
 write.csv(exp3_probability_df, file_path, row.names = F)
+```
+
+
+# Computing metrics for median warming in near term (2021-2040)
+
+Create new metric object for near term period:
+maybe Add this to experimental set-up script so I can use it for all the experiments. 
+```{r}
+# creating median end-of-century warming (GSAT)
+nt_warming <- new_metric(GLOBAL_TAS(), 2021:2040, median)
+
+```
+
+Use the nt_warming metric to compute median near term warming for each run:
+```{r}
+# computing median end-of-century warming
+nt_warming_values_exp3 <- lapply(names(normalize_exp3_result_gsat), function(scenario_name) {
+  
+  df <- normalize_exp3_result_gsat[[scenario_name]]
+   
+  metric_values <- metric_calc(df, nt_warming)
+  
+  metric_values$scenario <- scenario_name
+  
+  return(metric_values)
+   
+ })
+
+# merge weights with new metrics 
+weighted_nt_metrics_exp3 <- Map(function(weights, metric_results) {
+  
+  merge(metric_results, weights, by = "run_number")
+  
+}, weights_exp3, nt_warming_values_exp3)
+
+```
+
+Make a weighted metrics dataframe for plotting:
+```{r}
+
+weighted_nt_metrics_exp3_df <- do.call(rbind, weighted_nt_metrics_exp3)
+
+```
+
+Save the weighted metrics data frame:
+
+```{r}
+# define directory path
+result_dir <- here("output", "warming_results")
+
+# create directory if one does not exist
+if (!dir.exists(result_dir)) {
+  dir.create(result_dir, recursive = T)
+}
+
+# identify the file path
+file_name <- "exp3_weighted_gsat_metric_near-term.csv"
+file_path <- file.path(result_dir, file_name)
+
+# save 
+write.csv(weighted_nt_metrics_exp3_df, file_path)
+
+```
+
+Preliminary visualization of warming PDF. Here we want to plot a weighted PDF curve with a facet for scenario:
+```{r}
+
+ggplot(weighted_nt_metrics_exp3_df, aes(x = metric_result)) +
+  stat_density(aes(weight = mc_weight), geom = "line", color = "dodgerblue", linewidth = 1.2, adjust = 1) +
+  labs(
+    title = "Likelihood-weighted Warming Distribution",
+    x = "2021-2040 Median Warming (°C)",
+    y = "Density (weighted)"
+  ) +
+  theme_light() +
+  facet_wrap(~scenario)
+
+```
+
+## Computing probabilities for near term warming (2021-2040)
+
+Here I want to compute probabilities for a range of different temperatures.
+
+```{r}
+# computing probabilities
+temp_prob_nt_exp3 <- lapply(names(weighted_nt_metrics_exp3), function(df_name) {
+  
+  # copy data 
+  df <- weighted_nt_metrics_exp3[[df_name]]
+  
+  # run probability calculator
+  prob_result <- prob_calc(df$metric_result, 
+                           bins = temp_ranges, 
+                           scores = df$mc_weight)
+  
+  # add scenario column to the result
+  prob_result$scenario <- df_name
+  
+  return(prob_result)
+})
+
+# give element names 
+names(temp_prob_nt_exp3) <- names(weights_exp3)
+
+```
+
+Save probability data:
+
+```{r}
+# define directory path
+result_dir <- here("output", "probability_results")
+
+# create directory if one does not exist
+if (!dir.exists(result_dir)) {
+  dir.create(result_dir, recursive = T)
+}
+
+# identify the file path
+file_name <- "exp3_weighted_gsat_probability_near-term.rds"
+file_path <- file.path(result_dir, file_name)
+
+# save 
+saveRDS(temp_prob_nt_exp3, file_path)
+```
+
+Create a probability df and save:
+```{r}
+exp3_nt_probability_df <- do.call(rbind, temp_prob_nt_exp3)
+
+# define directory path
+result_dir <- here("output", "probability_results")
+
+# create directory if one does not exist
+if (!dir.exists(result_dir)) {
+  dir.create(result_dir, recursive = T)
+}
+
+# identify the file path
+file_name <- "exp3_weighted_gsat_probability_near-term.csv"
+file_path <- file.path(result_dir, file_name)
+
+# save 
+write.csv(exp3_nt_probability_df, file_path, row.names = F)
+```
+
+
+# Computing metrics for median warming in mid term (2040-2060)
+
+Create new metric object for mid-term period:
+
+maybe Add this to experimental set-up script so I can use it for all the experiments. 
+```{r}
+# creating median end-of-century warming (GSAT)
+mt_warming <- new_metric(GLOBAL_TAS(), 2040:2060, median)
+
+```
+
+Use the nt_warming metric to compute median near term warming for each run:
+```{r}
+# computing median mid-term warming
+mt_warming_values_exp3 <- lapply(names(normalize_exp3_result_gsat), function(scenario_name) {
+  
+  df <- normalize_exp3_result_gsat[[scenario_name]]
+   
+  metric_values <- metric_calc(df, mt_warming)
+  
+  metric_values$scenario <- scenario_name
+  
+  return(metric_values)
+   
+ })
+
+# merge weights with new metrics 
+weighted_mt_metrics_exp3 <- Map(function(weights, metric_results) {
+  
+  merge(metric_results, weights, by = "run_number")
+  
+}, weights_exp3, mt_warming_values_exp3)
+
+```
+
+Make a weighted metrics dataframe for plotting:
+```{r}
+
+weighted_mt_metrics_exp3_df <- do.call(rbind, weighted_mt_metrics_exp3)
+
+```
+
+Save the weighted metrics data frame:
+
+```{r}
+# define directory path
+result_dir <- here("output", "warming_results")
+
+# create directory if one does not exist
+if (!dir.exists(result_dir)) {
+  dir.create(result_dir, recursive = T)
+}
+
+# identify the file path
+file_name <- "exp3_weighted_gsat_metric_mid-term.csv"
+file_path <- file.path(result_dir, file_name)
+
+# save 
+write.csv(weighted_mt_metrics_exp3_df, file_path)
+
+```
+
+Preliminary visualization of warming PDF. Here we want to plot a weighted PDF curve with a facet for scenario:
+```{r}
+
+ggplot(weighted_mt_metrics_exp3_df, aes(x = metric_result)) +
+  stat_density(aes(weight = mc_weight), geom = "line", color = "dodgerblue", linewidth = 1.2, adjust = 1) +
+  labs(
+    title = "Likelihood-weighted Warming Distribution",
+    x = "2041-2060 Median Warming (°C)",
+    y = "Density (weighted)"
+  ) +
+  theme_light() +
+  facet_wrap(~scenario)
+
+```
+
+## Computing probabilities for mid-term warming (2041-2060)
+
+Here I want to compute probabilities for a range of different temperatures.
+
+```{r}
+# computing probabilities
+temp_prob_mt_exp3 <- lapply(names(weighted_mt_metrics_exp3), function(df_name) {
+  
+  # copy data 
+  df <- weighted_mt_metrics_exp3[[df_name]]
+  
+  # run probability calculator
+  prob_result <- prob_calc(df$metric_result, 
+                           bins = temp_ranges, 
+                           scores = df$mc_weight)
+  
+  # add scenario column to the result
+  prob_result$scenario <- df_name
+  
+  return(prob_result)
+})
+
+# give element names 
+names(temp_prob_mt_exp3) <- names(weights_exp3)
+
+```
+
+Save probability data:
+
+```{r}
+# define directory path
+result_dir <- here("output", "probability_results")
+
+# create directory if one does not exist
+if (!dir.exists(result_dir)) {
+  dir.create(result_dir, recursive = T)
+}
+
+# identify the file path
+file_name <- "exp3_weighted_gsat_probability_mid-term.rds"
+file_path <- file.path(result_dir, file_name)
+
+# save 
+saveRDS(temp_prob_mt_exp3, file_path)
+```
+
+Create a probability df and save:
+```{r}
+exp3_mt_probability_df <- do.call(rbind, temp_prob_mt_exp3)
+
+# define directory path
+result_dir <- here("output", "probability_results")
+
+# create directory if one does not exist
+if (!dir.exists(result_dir)) {
+  dir.create(result_dir, recursive = T)
+}
+
+# identify the file path
+file_name <- "exp3_weighted_gsat_probability_mid-term.csv"
+file_path <- file.path(result_dir, file_name)
+
+# save 
+write.csv(exp3_mt_probability_df, file_path, row.names = F)
 ```

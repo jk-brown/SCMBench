@@ -14,3 +14,4 @@ rownames(parameters) <- NULL # just in case there are row names
 # Chunk into even parts
 chunks <- 50
 param_chunks <- split(parameters, cut(seq_len(nrow(parameters)), breaks = chunks, labels = FALSE))
+
