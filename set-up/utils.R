@@ -254,13 +254,8 @@ weight_ensemble <- function(df, gmst_criterion, co2_criterion) {
                              criterion = gmst_criterion,
                              score_function = score_bayesian)
   
-  # Score by CO2
-  weights_co2 <- score_runs(df,
-                            criterion = co2_criterion,
-                            score_function = score_bayesian)
-  
   # Combine
-  weights_list <- list(weights_temp, weights_co2)
+  weights_list <- list(weights_temp)
   weights_combined <- multi_criteria_weighting(weights_list)
   
   return(weights_combined)

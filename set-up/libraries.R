@@ -4,7 +4,7 @@
 library(matilda)
 library(MASS)
 library(tidyverse)
-library(Hmisc)
+library(spatstat)
 library(parallel)
 library(here)
 library(sn)

@@ -161,7 +161,7 @@ Compute weights:
 
 weights_exp1 <- lapply(matilda_result_exp1, function(df) {
   
-  weight_ensemble(df, gmst_criterion, co2_criterion)
+  weight_ensemble(df, gmst_criterion)
   
 })
 
@@ -202,11 +202,11 @@ weighted_result_exp1_df <- do.call(rbind, weighted_result_exp1)
 
 Plot gmst ensemble with weights
 ```{r}
-ggplot(data = subset(weighted_result_exp1_df, variable == "CO2_concentration" & year < 2101)) +
+ggplot(data = subset(weighted_result_exp1_df, variable == "gmst" & year < 2101)) +
   geom_line(aes(x = year, y = value, group = run_number, color = mc_weight, alpha = mc_weight)) +
   scale_color_gradient(low = "dodgerblue", high = "dodgerblue4")+
   scale_alpha_continuous(range = c(0, 1)) +
-  #geom_line(data = hist_temp_norm, aes(x = year, y = value), color = "red")+
+  geom_line(data = hist_temp_norm, aes(x = year, y = value), color = "red")+
   facet_wrap(~scenario) +
   theme_light()
 

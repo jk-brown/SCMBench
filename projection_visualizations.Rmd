@@ -95,7 +95,7 @@ names(default_colors) <- c("concentration", "concentration-emission", "emission"
 ggplot() +
   geom_line(data = combined_co2, 
             aes(x = year, y = median, color = config), 
-            linewidth = 0.8) +
+            linewidth = 0.5) +
   geom_ribbon(data = combined_co2, 
               aes(x = year, ymin = ci_05, ymax = ci_95, fill = config), 
               alpha = 0.2) +
@@ -110,3 +110,74 @@ ggplot() +
 ggsave("co2_projection_comparison.png")
 ```
 
+# Calculate summaries 
+
+Exp 2:
+```{r}
+gsat_summary_exp2 <- weighted_result_exp2_df %>% 
+  subset(variable == "global_tas" & year < 2101) %>% 
+  group_by(scenario, year) %>% 
+  dplyr::summarize(median = weighted.quantile(value, w = mc_weight, probs = c(0.5)), 
+            ci_05 = weighted.quantile(value, w = mc_weight, probs = c(0.05)), 
+            ci_95 = weighted.quantile(value, w = mc_weight, probs = c(0.95)), 
+          .groups = "drop") %>% 
+  mutate(config = "concentration-emission")
+  
+```
+
+Exp 3:
+```{r}
+gsat_summary_exp3 <- weighted_result_exp3_df %>% 
+  subset(variable == "global_tas" & year < 2101) %>% 
+  group_by(scenario, year) %>% 
+  dplyr::summarize(median = weighted.quantile(value, w = mc_weight, probs = c(0.5)), 
+            ci_05 = weighted.quantile(value, w = mc_weight, probs = c(0.05)), 
+            ci_95 = weighted.quantile(value, w = mc_weight, probs = c(0.95)), 
+          .groups = "drop") %>% 
+  mutate(config = "emission")
+  
+```
+
+
+Exp 1:
+```{r}
+
+gsat_summary_exp1 <- weighted_result_exp1_df %>% 
+  subset(variable == "global_tas" & year < 2101) %>% 
+  group_by(scenario, year) %>% 
+  dplyr::summarize(median = weighted.quantile(value, w = mc_weight, probs = c(0.5)), 
+            ci_05 = weighted.quantile(value, w = mc_weight, probs = c(0.05)), 
+            ci_95 = weighted.quantile(value, w = mc_weight, probs = c(0.95)), 
+          .groups = "drop") %>% 
+  mutate(config = "concentration")
+
+```
+
+```{r}
+combined_gsat <- rbind(gsat_summary_exp1, gsat_summary_exp2, gsat_summary_exp3)
+```
+
+
+# Plotting 
+
+```{r}
+
+# Default ggplot2 palette for discrete colors (first 3)
+default_colors <- c("#F8766D", "#7CAE00", "#00BFC4")  # These are the default ggplot2 colors
+names(default_colors) <- c("concentration", "concentration-emission", "emission")
+
+ggplot() +
+  geom_line(data = combined_gsat, 
+            aes(x = year, y = median, color = config), 
+            linewidth = 0.5) +
+  geom_line(data = combined_gsat, 
+            aes(x = year, y = ci_05, color = config), 
+            linetype = "dotted", linewidth = 0.4) +
+  geom_line(data = combined_gsat, 
+            aes(x = year, y = ci_95, color = config), 
+            linetype = "dotted", linewidth = 0.4) +
+  facet_wrap(~scenario) +
+  scale_color_manual(values = default_colors) +
+  theme_light()
+ggsave("gsat_projection_comparison.png", height = 10, width = 15)
+```

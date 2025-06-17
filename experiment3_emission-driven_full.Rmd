@@ -146,7 +146,7 @@ Compute weights:
 
 weights_exp3 <- lapply(matilda_result_exp3, function(df) {
   
-  weight_ensemble(df, gmst_criterion, co2_criterion)
+  weight_ensemble(df, gmst_criterion)
   
 })
 

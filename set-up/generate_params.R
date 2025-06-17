@@ -11,7 +11,7 @@ source("set-up/load_ini.R")
 parameter_core <- newcore(ini_list[["SSP2-4.5"]])
 
 # number of parameter sets to sample
-n <- 100
+n <- 1000
 set.seed(444)
 
 # generate PPE

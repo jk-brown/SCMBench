@@ -19,30 +19,46 @@ source("set-up/libraries.R")
 We want to read in the probability results for each experiment, add a column for the experiment code, and then cbind rows into a single dataframe.
 
 ```{r}
-# load data 
+# Load files
 dir_path <- "output/probability_results"
+file_list <- list.files(path = dir_path, pattern = "\\.csv$", full.names = TRUE)
 
-# list all files in the folder
-file_list <- list.files(path = dir_path, pattern = "\\.csv$", full.names = T)
+# Define mapping from exp to config
+exp_map <- c("exp1" = "concentration",
+             "exp2" = "concentration-emission",
+             "exp3" = "emission")
 
-# experiment names 
-exp_names <- c("concentration", "concentration-emission", "emission")
-
-# Read each CSV and add experiment name
-probability_list <- Map(function(file, name) {
-  df <- read.csv(file, row.names = NULL)
+# Read each file and assign config + term
+prob_list <- lapply(file_list, function(file) {
+  df <- read.csv(file)
   
-  # Drop X column if it exists and is just row numbers
+  # Remove 'X' column if it exists
   if ("X" %in% names(df)) {
     df <- df[ , names(df) != "X"]
   }
   
-  df$config <- name
+  file_name <- basename(file)
+  
+  # Extract experiment ID (e.g., exp1)
+  exp_id <- sub("_.*", "", file_name)
+  config <- exp_map[exp_id]
+  
+  # Determine term based on suffix in filename
+  term <- if (grepl("mid-term", file_name)) {
+    "mid-term"
+  } else if (grepl("near-term", file_name)) {
+    "near-term"
+  } else {
+    "long-term"  # No term in name → must be long-term
+  }
+  
+  df$config <- config
+  df$term <- term
   return(df)
-}, file_list, exp_names)
+})
 
-# Combine into one data frame
-combined_probs <- do.call(rbind, probability_list)
+# Combine all into one dataframe
+combined_probs <- do.call(rbind, prob_list)
 rownames(combined_probs) <- NULL
 ```
 
@@ -81,7 +97,7 @@ TEMP_PROBABILITY_COLORS <- c(
 )
 
 
-ggplot(combined_probs, aes(x = config, y = probability, fill = bin_label)) +
+ggplot(data = subset(combined_probs, term == "near-term"), aes(x = config, y = probability, fill = bin_label)) +
   geom_bar(stat = "identity", position = "dodge", color = "black") +
   facet_wrap(~ scenario) +
   scale_fill_manual(values = TEMP_PROBABILITY_COLORS, name = "Warming Bin") +
@@ -95,6 +111,44 @@ ggplot(combined_probs, aes(x = config, y = probability, fill = bin_label)) +
     legend.position = "right",
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
+
+```
+
+```{r}
+
+ggplot(data = subset(combined_probs, term == "mid-term"), aes(x = config, y = probability, fill = bin_label)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  facet_wrap(~ scenario) +
+  scale_fill_manual(values = TEMP_PROBABILITY_COLORS, name = "Warming Bin") +
+  labs(
+    title = "Probability Distribution of End-of-Century GMST",
+    x = "Experiment Configuration",
+    y = "Probability"
+  ) +
+  theme_light() +
+  theme(
+    legend.position = "right",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+```{r}
+
+ggplot(data = subset(combined_probs, term == "long-term"), aes(x = config, y = probability, fill = bin_label)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  facet_wrap(~ scenario) +
+  scale_fill_manual(values = TEMP_PROBABILITY_COLORS, name = "Warming Bin") +
+  labs(
+    title = "Probability Distribution of End-of-Century GMST",
+    x = "Experiment Configuration",
+    y = "Probability"
+  ) +
+  theme_light() +
+  theme(
+    legend.position = "right",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) 
+
 ggsave("probabilisty_comparison.png")
 ```
 
