@@ -132,7 +132,7 @@ lc_gsat_values_exp3 <- lapply(names(matilda_result_exp3_norm_gsat), function(sce
 lc_gsat_values_exp3_df <- do.call(rbind, lc_gsat_values_exp3)
 ```
 
-Combine to a single dataframe:
+Combine to a single data frame:
 ```{r}
 
 lc_gsat_all <- rbind(lc_gsat_values_exp1_df, lc_gsat_values_exp2_df, lc_gsat_values_exp3_df)
@@ -141,7 +141,7 @@ lc_gsat_all <- rbind(lc_gsat_values_exp1_df, lc_gsat_values_exp2_df, lc_gsat_val
 
 # Summarize data to qunatify uncertainty spread
 
-Summarize data for each exp-scenario group and calulate quantiles (5-95), median, and uncertainty spread:
+Summarize data for each exp-scenario group and calculate quantiles (5-95), median, and uncertainty spread:
 ```{r}
 
 lc_gsat_summary <- lc_gsat_all %>% 
@@ -153,5 +153,49 @@ lc_gsat_summary <- lc_gsat_all %>%
     spread = ci_95 - ci_5, 
     .groups = "drop")
 
+head(lc_gsat_summary)
+
 ```
 
+Now we want to bootstrap the uncertainty spread for each config-scenario combination so we can compare the differences in uncertainty spread:
+```{r}
+# bootstrap parameters
+n_boot <- 10000
+n_sample <- 1000
+
+# bootstrap function
+bootstrap_spread <- function(values, n_boot, n_sample) {
+  
+  replicate(n_boot, {
+    resample = sample(values, size = n_sample, replace = TRUE)
+    ci_5 = quantile(resample, probs = 0.05) 
+    ci_95 = quantile(resample, probs = 0.95) 
+    ci_95 - ci_5
+  })
+}
+
+# split data into config-scenario groups
+lc_gsat_split <- split(lc_gsat_all, list(lc_gsat_all$config, lc_gsat_all$scenario))
+
+# apply bootstrap
+bootstrap_lc_gsat_spread <- lapply(names(lc_gsat_split), function(group_name) {
+  
+  group_data <- lc_gsat_split[[group_name]]
+  spread_vals <- bootstrap_spread(group_data$metric_result, n_boot, n_sample)
+  
+  # get config and scenario names from the "group_name"
+  parts <- unlist(strsplit(group_name, split = "\\."))
+  config <- parts[1]
+  scenario <- parts[2]
+  
+  data.frame(
+    config = config,
+    scenario = scenario,
+    spread = spread_vals
+  )
+})
+
+bootstrap_lc_gsat_spread_df <- do.call(rbind, bootstrap_lc_gsat_spread)
+```
+
+The result of the above is a new data frame with 10,000 spread estimates for each config-SSP combination. This will allow us to compute summary statistics on the uncertainty spread of our data and also allow us to make comparisons about uncertainty spread across config types.
