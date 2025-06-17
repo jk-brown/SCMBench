@@ -1,0 +1,157 @@
+---
+title: 'Testing Hypothesis #1'
+author: "Joe Brown"
+date: "2025-06-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# H1 background
+
+### Mechanism
+
+In the fully emissions-driven (ED) configuration, carbon cycle parameter uncertainty affects both historical and future atmospheric CO2. This allows historical carbon cycle variability to propagate forward and influence future radiative forcing and warming. When CO2 concentrations are prescribed, as in the concentration-driven (CD) and concentration-emission (CE) configurations, the carbon cycle uncertainty is suppressed from impacting overal model response uncertainty. We want to know whether this results in a significant difference in the spread of the response uncertainty. And if it does, can we quantify by how much?
+
+### Prediction
+
+The ED configuration will exhibit a wider distribution of projected late century (2081-2100) global temperature anomaly, followed by the CE configuration, and then the concentration-driven configuration (CD), because the ED configuration allows the uncertainty from the historical carbon cycle to propagate to future Earth system respopnse. 
+
+i.e.: Uncertainty: CD < CE < ED
+
+# Set-up
+
+### Load libraries and utils 
+
+```{r, message=FALSE}
+
+source("set-up/libraries.R")
+source("set-up/utils.R")
+
+```
+
+# Data 
+
+Need Matilda results from each of the three configurations we are testing.
+
+We will use this to compute the `median gsat for 2081-2100` relative to the 1995-2014 reference period:
+
+Load experiment results:
+```{r}
+
+matilda_result_exp1 <- readRDS("output/model_results/exp1_matilda_results_concentration_full_NA-rm.RDS")
+matilda_result_exp2 <- readRDS("output/model_results/exp2_matilda_results_concentration_historic_NA-rm.RDS")
+matilda_result_exp3 <- readRDS("output/model_results/exp3_matilda_results_concentration_historic_NA-rm.RDS")
+
+```
+
+For each experiment, compute `global_tas` relative to 1995-2014 reference period:
+```{r}
+
+# For exp1
+matilda_result_exp1_norm_gsat <- lapply(matilda_result_exp1, function(df) {
+  normalize_to_reference(df, 1995, 2014, variables = "global_tas")
+}) 
+
+# For exp2
+matilda_result_exp2_norm_gsat <- lapply(matilda_result_exp2, function(df) {
+  normalize_to_reference(df, 1995, 2014, variables = "global_tas")
+}) 
+
+# For exp3
+matilda_result_exp3_norm_gsat <- lapply(matilda_result_exp3, function(df) {
+  normalize_to_reference(df, 1995, 2014, variables = "global_tas")
+}) 
+
+
+```
+
+# Compute late century temperature change
+
+Define the metric of interest:
+```{r}
+
+# creating median late century warming metric using global_tas
+lc_warming <- new_metric(GLOBAL_TAS(), 2081:2100, median)
+
+```
+
+Compute median late century temperature chmage for each experiment:
+```{r}
+# For exp1
+lc_gsat_values_exp1 <- lapply(names(matilda_result_exp1_norm_gsat), function(scenario_name) {
+  
+  df <- matilda_result_exp1_norm_gsat[[scenario_name]]
+   
+  metric_values <- metric_calc(df, lc_warming)
+  
+  metric_values$scenario <- scenario_name
+  
+  metric_values$config <- "CD"
+  
+  return(metric_values)
+   
+ })
+
+lc_gsat_values_exp1_df <- do.call(rbind, lc_gsat_values_exp1)
+
+# For exp2
+lc_gsat_values_exp2 <- lapply(names(matilda_result_exp2_norm_gsat), function(scenario_name) {
+  
+  df <- matilda_result_exp2_norm_gsat[[scenario_name]]
+   
+  metric_values <- metric_calc(df, lc_warming)
+  
+  metric_values$scenario <- scenario_name
+  
+  metric_values$config <- "CE"
+  
+  return(metric_values)
+   
+ })
+
+lc_gsat_values_exp2_df <- do.call(rbind, lc_gsat_values_exp2)
+
+# For exp3
+lc_gsat_values_exp3 <- lapply(names(matilda_result_exp3_norm_gsat), function(scenario_name) {
+  
+  df <- matilda_result_exp3_norm_gsat[[scenario_name]]
+   
+  metric_values <- metric_calc(df, lc_warming)
+  
+  metric_values$scenario <- scenario_name
+  
+  metric_values$config <- "ED"
+  
+  return(metric_values)
+   
+ })
+
+lc_gsat_values_exp3_df <- do.call(rbind, lc_gsat_values_exp3)
+```
+
+Combine to a single dataframe:
+```{r}
+
+lc_gsat_all <- rbind(lc_gsat_values_exp1_df, lc_gsat_values_exp2_df, lc_gsat_values_exp3_df)
+
+```
+
+# Summarize data to qunatify uncertainty spread
+
+Summarize data for each exp-scenario group and calulate quantiles (5-95), median, and uncertainty spread:
+```{r}
+
+lc_gsat_summary <- lc_gsat_all %>% 
+  group_by(config, scenario) %>% 
+  summarize(
+    median = quantile(metric_result, probs = 0.50), 
+    ci_5 = quantile(metric_result, probs = 0.05), 
+    ci_95 = quantile(metric_result, probs = 0.95), 
+    spread = ci_95 - ci_5, 
+    .groups = "drop")
+
+```
+
