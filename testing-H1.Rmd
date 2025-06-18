@@ -195,7 +195,138 @@ bootstrap_lc_gsat_spread <- lapply(names(lc_gsat_split), function(group_name) {
   )
 })
 
+names(bootstrap_lc_gsat_spread) <- names(lc_gsat_split)
+
 bootstrap_lc_gsat_spread_df <- do.call(rbind, bootstrap_lc_gsat_spread)
 ```
 
 The result of the above is a new data frame with 10,000 spread estimates for each config-SSP combination. This will allow us to compute summary statistics on the uncertainty spread of our data and also allow us to make comparisons about uncertainty spread across config types.
+
+We can use the bootstrap data to produce statistical summaries fro the uncertainty spread of the different configs across SSP scenarios:
+```{r}
+
+spread_summary_df <- bootstrap_lc_gsat_spread_df %>% 
+  group_by(config, scenario) %>% 
+  summarize(
+    mean_spread = mean(spread),
+    ci_5 = quantile(spread, 0.05), 
+    ci_95 = quantile(spread, 0.95), 
+    .groups = "drop"
+  )
+
+```
+
+Before moving on to the next step of looking at pairwise spread differences, we can plot the mean + CI of the spread by config type for each SSP:
+
+```{r}
+ggplot(data = spread_summary_df) +
+  geom_bar(aes(x = config, y = mean_spread, fill = config), stat = "identity") +
+  geom_errorbar(aes(x = config, ymin = ci_5, ymax = ci_95), width = 0.25) +
+  facet_wrap(~scenario) +
+  theme_light()
+```
+The barplot reveals a consistent difference in the uncertainty spread across model configurations. In nearly every SSP scenario, the concentration-driven (CD) configuration exhibits a significantly narrower spread in late century global temperature projections compared to the emissions-driven (ED) and emissions-with-carbon-cycle (EC) configurations. This suggests that constraining historical CO2 concentrations suppresses carbon cycle variability, which in turn limits the propagation of uncertainty into future projections. This reduced spread could lead to underestimating the likelihood of exceeding key temperature thresholds. This pattern holds across all scenarios tested here, with the exception of SSP5-8.5, where the difference between configurations appears less pronounced.
+
+This analysis also provides useful perspective on a broader modeling practice: Earth system models (ESMs) are typically run in concentration-driven mode for both historical and scenario simulations, meaning CO2 concentrations are prescribed rather than simulated. The SCM experiment here isolates the consequences of that choice. It shows that prescribing CO₂ concentrations—while useful for consistency—can obscure the uncertainty introduced by carbon cycle processes, especially when estimating the likelihood of warming outcomes. This observation reinforces arguments made by Sanderson et al. (2024), who caution that concentration-driven frameworks may under-represent structural uncertainty in future climate projections.
+
+### Pairwise comparisons
+
+Now we want to know the pariwise differences so we can make quantitative statements about the spread differences between the configuration types:
+```{r}
+# List of SSPs and config pairs
+ssp_list <- unique(lc_gsat_all$scenario)
+config_pairs <- list(
+  c("CD", "CE"),
+  c("CD", "ED"),
+  c("CE", "ED")
+)
+
+# Initialize results list
+pairwise_results <- list()
+
+# Loop through SSPs and config pairs
+for (ssp in ssp_list) {
+  for (pair in config_pairs) {
+    
+    cfg1 <- pair[1]
+    cfg2 <- pair[2]
+    
+    # Build the key names to match the list
+    name1 <- paste(cfg1, ssp, sep = ".")
+    name2 <- paste(cfg2, ssp, sep = ".")
+    
+    # Make sure both are in your list
+    if (!(name1 %in% names(bootstrap_lc_gsat_spread)) || 
+        !(name2 %in% names(bootstrap_lc_gsat_spread))) {
+      warning(paste("Missing:", name1, "or", name2))
+      next
+    }
+    
+    # Pull spread vectors
+    spread1 <- bootstrap_lc_gsat_spread[[name1]]$spread
+    spread2 <- bootstrap_lc_gsat_spread[[name2]]$spread
+    
+    # Subtract
+    diff <- spread1 - spread2
+    
+    # Summarize
+    pairwise_results[[paste(ssp, cfg1, cfg2, sep = "_")]] <- data.frame(
+      scenario = ssp,
+      config_1 = cfg1,
+      config_2 = cfg2,
+      mean_diff = mean(diff),
+      ci_low = quantile(diff, 0.025),
+      ci_high = quantile(diff, 0.975)
+    )
+  }
+}
+
+# Combine into final results data frame
+pairwise_results_df <- do.call(rbind, pairwise_results)
+```
+
+Add a flag to tell which of these is significant:
+```{r}
+
+pairwise_results_df$significant <- with(pairwise_results_df, ci_low > 0 | ci_high < 0)
+pairwise_results_df$label <- ifelse(pairwise_results_df$significant, "*", "")
+
+```
+
+```{r}
+# Define consistent dodge object to reuse across geoms
+dodge <- position_dodge(width = 0.6)
+
+ggplot(pairwise_results_df, aes(x = scenario, y = mean_diff, 
+                                color = interaction(config_1, config_2),
+                                group = interaction(config_1, config_2))) +
+  geom_point(position = position_dodge(width = 0.6), size = 3) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high),
+                position = position_dodge(width = 0.6),
+                width = 0.25,
+                linewidth = 0.8) +
+geom_text(aes(label = label, y = ci_high + 0.02),
+            position = dodge,
+            vjust = 0, size = 6, 
+          show.legend = FALSE) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  scale_color_brewer(palette = "Set2") +
+  labs(
+    x = "Scenario",
+    y = "Difference in spread (°C)",
+    color = "Comparison",
+    title = "Spread differences between configuration pairs (90% CI)"
+  ) +
+  theme_light(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_text(angle = 30, hjust = 1)
+  )
+
+```
+important interpretation note -- in this type of figure, if the CI line crosses zero, there is a potential that the two configurations do not have a mean uncertainty spread that is different. 
+
+Stab at written results (quantitative values need corrected):
+Across all SSP scenarios, the concentration-driven (CD) configuration consistently produced narrower uncertainty spreads than both the emissions-driven (ED) and the concentration-emission (CE) configurations. In every scenario, the mean spread in CD was significantly smaller than in CE and ED. For example, in SSP2-4.5, the spread in CD was on average 0.28 degC narrower than in CE (90% CI: 0.19–0.37 degC), and 0.24 degC narrower than in ED (90% CI: 0.15–0.34 degC). These results support the hypothesis that suppressing carbon cycle uncertainty in the CD configuration artificially (? not sure this is a good use of the word) constrains projected temperature outcomes.
+
+In contrast, differences between CE and ED were small and not statistically significant in any scenario (90% CIs all include zero). This suggests that the act of prescribing CO₂ concentrations, rather than the inclusion or exclusion of the carbon cycle alone, is the primary factor driving the observed reduction in uncertainty.
