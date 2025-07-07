@@ -114,41 +114,45 @@ ggsave("co2_projection_comparison.png")
 
 Exp 2:
 ```{r}
-gsat_summary_exp2 <- weighted_result_exp2_df %>% 
-  subset(variable == "global_tas" & year < 2101) %>% 
+result_exp2 <- do.call(rbind, matilda_result_exp2_norm_gsat)
+
+gsat_summary_exp2 <- result_exp2 %>% 
+  subset(variable == "global_tas" & year >= 1995 & year <= 2100) %>% 
   group_by(scenario, year) %>% 
-  dplyr::summarize(median = weighted.quantile(value, w = mc_weight, probs = c(0.5)), 
-            ci_05 = weighted.quantile(value, w = mc_weight, probs = c(0.05)), 
-            ci_95 = weighted.quantile(value, w = mc_weight, probs = c(0.95)), 
-          .groups = "drop") %>% 
+  dplyr::summarize(median = quantile(value, probs = 0.5), 
+                   ci_05 = quantile(value, probs = 0.05), 
+                   ci_95 = quantile(value, probs = 0.95), 
+                   .groups = "drop") %>% 
   mutate(config = "concentration-emission")
   
 ```
 
 Exp 3:
 ```{r}
-gsat_summary_exp3 <- weighted_result_exp3_df %>% 
-  subset(variable == "global_tas" & year < 2101) %>% 
+result_exp3 <- do.call(rbind, matilda_result_exp3_norm_gsat)
+
+gsat_summary_exp3 <- result_exp3 %>% 
+  subset(variable == "global_tas" & year >= 1995 & year <= 2100) %>% 
   group_by(scenario, year) %>% 
-  dplyr::summarize(median = weighted.quantile(value, w = mc_weight, probs = c(0.5)), 
-            ci_05 = weighted.quantile(value, w = mc_weight, probs = c(0.05)), 
-            ci_95 = weighted.quantile(value, w = mc_weight, probs = c(0.95)), 
-          .groups = "drop") %>% 
+  dplyr::summarize(median = quantile(value, probs = 0.5), 
+                   ci_05 = quantile(value, probs = 0.05), 
+                   ci_95 = quantile(value, probs = 0.95), 
+                   .groups = "drop") %>% 
   mutate(config = "emission")
   
 ```
 
-
 Exp 1:
 ```{r}
+result_exp1 <- do.call(rbind, matilda_result_exp1_norm_gsat)
 
-gsat_summary_exp1 <- weighted_result_exp1_df %>% 
-  subset(variable == "global_tas" & year < 2101) %>% 
+gsat_summary_exp1 <- result_exp1 %>% 
+  subset(variable == "global_tas" & year >= 1995 & year <= 2100) %>% 
   group_by(scenario, year) %>% 
-  dplyr::summarize(median = weighted.quantile(value, w = mc_weight, probs = c(0.5)), 
-            ci_05 = weighted.quantile(value, w = mc_weight, probs = c(0.05)), 
-            ci_95 = weighted.quantile(value, w = mc_weight, probs = c(0.95)), 
-          .groups = "drop") %>% 
+  dplyr::summarize(median = quantile(value, probs = 0.5), 
+                   ci_05 = quantile(value, probs = 0.05), 
+                   ci_95 = quantile(value, probs = 0.95), 
+                   .groups = "drop") %>% 
   mutate(config = "concentration")
 
 ```
@@ -172,12 +176,12 @@ ggplot() +
             linewidth = 0.5) +
   geom_line(data = combined_gsat, 
             aes(x = year, y = ci_05, color = config), 
-            linetype = "dotted", linewidth = 0.4) +
+            linetype = "dotted", linewidth = 0.6) +
   geom_line(data = combined_gsat, 
             aes(x = year, y = ci_95, color = config), 
-            linetype = "dotted", linewidth = 0.4) +
+            linetype = "dotted", linewidth = 0.6) +
   facet_wrap(~scenario) +
   scale_color_manual(values = default_colors) +
   theme_light()
-ggsave("gsat_projection_comparison.png", height = 10, width = 15)
+ggsave("gsat_projection_comparison.png", height = 7, width = 11)
 ```

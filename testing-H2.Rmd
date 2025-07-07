@@ -1,0 +1,204 @@
+---
+title: 'Testing Hypothesis #2'
+author: "Joe Brown"
+date: "2025-06-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Set-up
+
+### Load libraries and utils 
+
+```{r, message=FALSE}
+
+source("set-up/libraries.R")
+source("set-up/utils.R")
+
+```
+
+# Data 
+
+Need Matilda warming projection results from each of the three configurations we are testing.
+
+Load experiment GSAT metric results:
+```{r}
+lc_gsat_values_exp1_df <- read.csv("output/warming_results/exp1_gsat_metric.csv")
+lc_gsat_values_exp1_df$config <- "CD"
+
+lc_gsat_values_exp2_df <- read.csv("output/warming_results/exp2_gsat_metric.csv")
+lc_gsat_values_exp2_df$config <- "CE"
+
+lc_gsat_values_exp3_df <- read.csv("output/warming_results/exp3_gsat_metric.csv")
+lc_gsat_values_exp3_df$config <- "ED"
+```
+
+Combine to a single data frame:
+```{r}
+
+lc_gsat_all <- rbind(lc_gsat_values_exp1_df, lc_gsat_values_exp2_df, lc_gsat_values_exp3_df)
+
+```
+
+Here we are preparing the data we need to conduct the KS test which will tell me whether the late century temperature distributions are different. 
+
+```{r}
+# split the lc_gsat_all into a list by config type
+lc_config_list <- split(lc_gsat_all, lc_gsat_all$config)
+
+# now split those config dfs again to split by scenario
+lc_gsat_list <- lapply(lc_config_list, function(df) {
+  split(df, df$scenario)
+})
+
+```
+
+KS test:
+```{r}
+configs <- names(lc_gsat_list)
+scenarios <- names(lc_gsat_list[[1]])  # assumes same scenarios in each config
+
+# Define all config pairs you want to test
+config_pairs <- combn(configs, 2, simplify = FALSE)
+
+# Loop through each scenario and config pair
+ks_results <- lapply(scenarios, function(scn) {
+  lapply(config_pairs, function(pair) {
+    
+    config1 <- pair[1]
+    config2 <- pair[2]
+    
+    x <- lc_gsat_list[[config1]][[scn]]$metric_result
+    y <- lc_gsat_list[[config2]][[scn]]$metric_result
+    
+    ks <- ks.test(x, y)
+    
+    data.frame(
+      scenario = scn,
+      config1 = config1,
+      config2 = config2,
+      D_statistic = ks$statistic,
+      p_value = ks$p.value
+    )
+    
+  }) %>% bind_rows()
+}) %>% bind_rows()
+```
+
+flag significance:
+```{r}
+ks_results <- ks_results %>%
+  mutate(significant = p_value < 0.05)
+```
+
+write bootstrap function to get mean skewness or kurtosis:
+```{r}
+bootstrap_stat_moments <- function(values, stat_func, n_boot = 10000, n_sample = 1000) {
+  replicate(n_boot, {
+    resample <- sample(values, size = n_sample, replace = TRUE)
+    stat_func(resample)
+  })
+}
+```
+
+Compute bootstrap fr distribution skew and kurtosis:
+```{r}
+set.seed(444)
+
+# Bootstrap for skewness
+bootstrap_skew_df <- lapply(names(lc_gsat_list), function(config) {
+  
+  config_data <- lc_gsat_list[[config]]
+  
+  lapply(names(config_data), function(scenario) {
+    
+    values <- config_data[[scenario]]$metric_result
+    skew_vals <- bootstrap_stat_moments(values, skewness)
+
+    data.frame(
+      config = config,
+      scenario = scenario,
+      skewness = skew_vals
+    )
+    
+  }) %>% bind_rows()
+}) %>% bind_rows()
+
+# Bootstrap for kurtosis
+bootstrap_kurt_df <- lapply(names(lc_gsat_list), function(config) {
+  
+  config_data <- lc_gsat_list[[config]]
+  
+  lapply(names(config_data), function(scenario) {
+    
+    values <- config_data[[scenario]]$metric_result
+    kurt_vals <- bootstrap_stat_moments(values, kurtosis)
+
+    data.frame(
+      config = config,
+      scenario = scenario,
+      kurtosis = kurt_vals
+    )
+    
+  }) %>% bind_rows()
+}) %>% bind_rows()
+
+
+```
+
+construct a summary tableusing bootstrap results
+```{r}
+# Skewness summary
+skew_summary_df <- bootstrap_skew_df %>%
+  group_by(config, scenario) %>%
+  summarize(
+    mean_skew = mean(skewness),
+    skew_ci_low = quantile(skewness, 0.025),
+    skew_ci_high = quantile(skewness, 0.975),
+    .groups = "drop"
+  )
+
+# Kurtosis summary
+kurt_summary_df <- bootstrap_kurt_df %>%
+  group_by(config, scenario) %>%
+  summarize(
+    mean_kurt = mean(kurtosis),
+    kurt_ci_low = quantile(kurtosis, 0.025),
+    kurt_ci_high = quantile(kurtosis, 0.975),
+    .groups = "drop"
+  )
+```
+
+Plotting:
+```{r}
+skew_plot <- ggplot(data = skew_summary_df) +
+  geom_bar(aes(x = config, y = mean_skew, fill = config), stat = "identity") +
+  geom_errorbar(aes(x = config, ymin = skew_ci_low, ymax = skew_ci_high), width = 0.25) +
+  facet_wrap(~scenario) +
+  theme_light()
+
+ggsave("output/figures/skew_plot.png", skew_plot, 
+       height = 5, 
+       width = 10, 
+       units = "in", 
+       device = "png")
+```
+
+```{r}
+
+kurt_plot <- ggplot(data = kurt_summary_df) +
+  geom_bar(aes(x = config, y = mean_kurt, fill = config), stat = "identity") +
+  geom_errorbar(aes(x = config, ymin = kurt_ci_low, ymax = kurt_ci_high), width = 0.25) +
+  facet_wrap(~scenario) +
+  theme_light()
+
+ggsave("output/figures/kurt_plot.png", kurt_plot, 
+       height = 5, 
+       width = 10, 
+       units = "in", 
+       device = "png")
+```
+

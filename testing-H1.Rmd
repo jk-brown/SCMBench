@@ -17,7 +17,7 @@ In the fully emissions-driven (ED) configuration, carbon cycle parameter uncerta
 
 ### Prediction
 
-The ED configuration will exhibit a wider distribution of projected late century (2081-2100) global temperature anomaly, followed by the CE configuration, and then the concentration-driven configuration (CD), because the ED configuration allows the uncertainty from the historical carbon cycle to propagate to future Earth system respopnse. 
+The ED configuration will exhibit a wider distribution of projected late century (2081-2100) global temperature anomaly, followed by the CE configuration, and then the concentration-driven configuration (CD), because the ED configuration allows the uncertainty from the historical carbon cycle to propagate to future Earth system response. 
 
 i.e.: Uncertainty: CD < CE < ED
 
@@ -34,103 +34,20 @@ source("set-up/utils.R")
 
 # Data 
 
-Need Matilda results from each of the three configurations we are testing.
+Need Matilda warming projection results from each of the three configurations we are testing.
 
-We will use this to compute the `median gsat for 2081-2100` relative to the 1995-2014 reference period:
-
-Load experiment results:
+Load experiment GSAT metric results:
 ```{r}
+lc_gsat_values_exp1_df <- read.csv("output/warming_results/exp1_gsat_metric.csv")
+lc_gsat_values_exp1_df$config <- "CD"
 
-matilda_result_exp1 <- readRDS("output/model_results/exp1_matilda_results_concentration_full_NA-rm.RDS")
-matilda_result_exp2 <- readRDS("output/model_results/exp2_matilda_results_concentration_historic_NA-rm.RDS")
-matilda_result_exp3 <- readRDS("output/model_results/exp3_matilda_results_concentration_historic_NA-rm.RDS")
+lc_gsat_values_exp2_df <- read.csv("output/warming_results/exp2_gsat_metric.csv")
+lc_gsat_values_exp2_df$config <- "CE"
 
+lc_gsat_values_exp3_df <- read.csv("output/warming_results/exp3_gsat_metric.csv")
+lc_gsat_values_exp3_df$config <- "ED"
 ```
 
-For each experiment, compute `global_tas` relative to 1995-2014 reference period:
-```{r}
-
-# For exp1
-matilda_result_exp1_norm_gsat <- lapply(matilda_result_exp1, function(df) {
-  normalize_to_reference(df, 1995, 2014, variables = "global_tas")
-}) 
-
-# For exp2
-matilda_result_exp2_norm_gsat <- lapply(matilda_result_exp2, function(df) {
-  normalize_to_reference(df, 1995, 2014, variables = "global_tas")
-}) 
-
-# For exp3
-matilda_result_exp3_norm_gsat <- lapply(matilda_result_exp3, function(df) {
-  normalize_to_reference(df, 1995, 2014, variables = "global_tas")
-}) 
-
-
-```
-
-# Compute late century temperature change
-
-Define the metric of interest:
-```{r}
-
-# creating median late century warming metric using global_tas
-lc_warming <- new_metric(GLOBAL_TAS(), 2081:2100, median)
-
-```
-
-Compute median late century temperature chmage for each experiment:
-```{r}
-# For exp1
-lc_gsat_values_exp1 <- lapply(names(matilda_result_exp1_norm_gsat), function(scenario_name) {
-  
-  df <- matilda_result_exp1_norm_gsat[[scenario_name]]
-   
-  metric_values <- metric_calc(df, lc_warming)
-  
-  metric_values$scenario <- scenario_name
-  
-  metric_values$config <- "CD"
-  
-  return(metric_values)
-   
- })
-
-lc_gsat_values_exp1_df <- do.call(rbind, lc_gsat_values_exp1)
-
-# For exp2
-lc_gsat_values_exp2 <- lapply(names(matilda_result_exp2_norm_gsat), function(scenario_name) {
-  
-  df <- matilda_result_exp2_norm_gsat[[scenario_name]]
-   
-  metric_values <- metric_calc(df, lc_warming)
-  
-  metric_values$scenario <- scenario_name
-  
-  metric_values$config <- "CE"
-  
-  return(metric_values)
-   
- })
-
-lc_gsat_values_exp2_df <- do.call(rbind, lc_gsat_values_exp2)
-
-# For exp3
-lc_gsat_values_exp3 <- lapply(names(matilda_result_exp3_norm_gsat), function(scenario_name) {
-  
-  df <- matilda_result_exp3_norm_gsat[[scenario_name]]
-   
-  metric_values <- metric_calc(df, lc_warming)
-  
-  metric_values$scenario <- scenario_name
-  
-  metric_values$config <- "ED"
-  
-  return(metric_values)
-   
- })
-
-lc_gsat_values_exp3_df <- do.call(rbind, lc_gsat_values_exp3)
-```
 
 Combine to a single data frame:
 ```{r}
@@ -159,6 +76,8 @@ head(lc_gsat_summary)
 
 Now we want to bootstrap the uncertainty spread for each config-scenario combination so we can compare the differences in uncertainty spread:
 ```{r}
+set.seed(444)
+
 # bootstrap parameters
 n_boot <- 10000
 n_sample <- 1000
@@ -209,8 +128,8 @@ spread_summary_df <- bootstrap_lc_gsat_spread_df %>%
   group_by(config, scenario) %>% 
   summarize(
     mean_spread = mean(spread),
-    ci_5 = quantile(spread, 0.05), 
-    ci_95 = quantile(spread, 0.95), 
+    ci_low = quantile(spread, 0.025), 
+    ci_high = quantile(spread, 0.975), 
     .groups = "drop"
   )
 
@@ -219,12 +138,23 @@ spread_summary_df <- bootstrap_lc_gsat_spread_df %>%
 Before moving on to the next step of looking at pairwise spread differences, we can plot the mean + CI of the spread by config type for each SSP:
 
 ```{r}
-ggplot(data = spread_summary_df) +
+mean_config_spread <- 
+  ggplot(data = spread_summary_df) +
   geom_bar(aes(x = config, y = mean_spread, fill = config), stat = "identity") +
-  geom_errorbar(aes(x = config, ymin = ci_5, ymax = ci_95), width = 0.25) +
+  geom_errorbar(aes(x = config, ymin = ci_low, ymax = ci_high), width = 0.25) +
   facet_wrap(~scenario) +
   theme_light()
+
+print(mean_config_spread)
+
+ggsave("output/figures/mean_config_spread.png", mean_config_spread,
+       height = 5, 
+       width = 10, 
+       units = "in", 
+       device = "png")
+
 ```
+
 The barplot reveals a consistent difference in the uncertainty spread across model configurations. In nearly every SSP scenario, the concentration-driven (CD) configuration exhibits a significantly narrower spread in late century global temperature projections compared to the emissions-driven (ED) and emissions-with-carbon-cycle (EC) configurations. This suggests that constraining historical CO2 concentrations suppresses carbon cycle variability, which in turn limits the propagation of uncertainty into future projections. This reduced spread could lead to underestimating the likelihood of exceeding key temperature thresholds. This pattern holds across all scenarios tested here, with the exception of SSP5-8.5, where the difference between configurations appears less pronounced.
 
 This analysis also provides useful perspective on a broader modeling practice: Earth system models (ESMs) are typically run in concentration-driven mode for both historical and scenario simulations, meaning CO2 concentrations are prescribed rather than simulated. The SCM experiment here isolates the consequences of that choice. It shows that prescribing CO₂ concentrations—while useful for consistency—can obscure the uncertainty introduced by carbon cycle processes, especially when estimating the likelihood of warming outcomes. This observation reinforces arguments made by Sanderson et al. (2024), who caution that concentration-driven frameworks may under-represent structural uncertainty in future climate projections.
@@ -234,6 +164,8 @@ This analysis also provides useful perspective on a broader modeling practice: E
 Now we want to know the pariwise differences so we can make quantitative statements about the spread differences between the configuration types:
 ```{r}
 # List of SSPs and config pairs
+set.seed(444)
+
 ssp_list <- unique(lc_gsat_all$scenario)
 config_pairs <- list(
   c("CD", "CE"),
@@ -297,9 +229,11 @@ pairwise_results_df$label <- ifelse(pairwise_results_df$significant, "*", "")
 # Define consistent dodge object to reuse across geoms
 dodge <- position_dodge(width = 0.6)
 
-ggplot(pairwise_results_df, aes(x = scenario, y = mean_diff, 
-                                color = interaction(config_1, config_2),
-                                group = interaction(config_1, config_2))) +
+pairwise_spread_comparison <- 
+  ggplot(pairwise_results_df, 
+         aes(x = scenario, y = mean_diff, 
+             color = interaction(config_1, config_2),
+             group = interaction(config_1, config_2))) +
   geom_point(position = position_dodge(width = 0.6), size = 3) +
   geom_errorbar(aes(ymin = ci_low, ymax = ci_high),
                 position = position_dodge(width = 0.6),
@@ -313,9 +247,9 @@ geom_text(aes(label = label, y = ci_high + 0.02),
   scale_color_brewer(palette = "Set2") +
   labs(
     x = "Scenario",
-    y = "Difference in spread (°C)",
+    y = "Difference in spread (C)",
     color = "Comparison",
-    title = "Spread differences between configuration pairs (90% CI)"
+    title = "Spread differences between configuration pairs (95% CI)"
   ) +
   theme_light(base_size = 12) +
   theme(
@@ -323,10 +257,23 @@ geom_text(aes(label = label, y = ci_high + 0.02),
     axis.text.x = element_text(angle = 30, hjust = 1)
   )
 
+print(pairwise_spread_comparison)
+
+ggsave("output/figures/pairwise_spread_comparison.png", pairwise_spread_comparison,
+       height = 5, 
+       width = 10, 
+       units = "in", 
+       device = "png")
+
 ```
+
 important interpretation note -- in this type of figure, if the CI line crosses zero, there is a potential that the two configurations do not have a mean uncertainty spread that is different. 
 
 Stab at written results (quantitative values need corrected):
 Across all SSP scenarios, the concentration-driven (CD) configuration consistently produced narrower uncertainty spreads than both the emissions-driven (ED) and the concentration-emission (CE) configurations. In every scenario, the mean spread in CD was significantly smaller than in CE and ED. For example, in SSP2-4.5, the spread in CD was on average 0.28 degC narrower than in CE (90% CI: 0.19–0.37 degC), and 0.24 degC narrower than in ED (90% CI: 0.15–0.34 degC). These results support the hypothesis that suppressing carbon cycle uncertainty in the CD configuration artificially (? not sure this is a good use of the word) constrains projected temperature outcomes.
 
 In contrast, differences between CE and ED were small and not statistically significant in any scenario (90% CIs all include zero). This suggests that the act of prescribing CO₂ concentrations, rather than the inclusion or exclusion of the carbon cycle alone, is the primary factor driving the observed reduction in uncertainty.
+
+Does this mean or provide some evidence that our relatively simple sampling procedure from parameters that largely influence the behavior of the carbon cycle naturally lead to physically plausible outcomes? Because our parameter priors were drawn from literature-based distributions consistent with observed carbon cycle behavior, even unweighted emissions-driven simulations produced historical CO₂ concentrations closely aligned with the prescribed values used in CE. This minimized differences in atmospheric CO₂ at the emissions switch point in 2020, reducing divergence between the ED and CE projections.
+
+SIDE NOTE: Maybe also include a comparison where I have emissions-driven with historical CO2 weighting? 

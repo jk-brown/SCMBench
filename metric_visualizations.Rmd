@@ -16,50 +16,29 @@ source("set-up/libraries.R")
 ```
 
 
-We want to read in the metric result data for each experiment, add a column for the experiment code, and then cbind rows into a single dataframe.
+# Data 
 
+# Data 
+
+Need Matilda warming projection results from each of the three configurations we are testing.
+
+Load experiment GSAT metric results:
 ```{r}
-# Load files
-dir_path <- "output/warming_results"
-file_list <- list.files(path = dir_path, pattern = "\\.csv$", full.names = TRUE)
+lc_gsat_values_exp1_df <- read.csv("output/warming_results/exp1_gsat_metric.csv")
+lc_gsat_values_exp1_df$config <- "CD"
 
-# Define mapping from exp to config
-exp_map <- c("exp1" = "concentration",
-             "exp2" = "concentration-emission",
-             "exp3" = "emission")
+lc_gsat_values_exp2_df <- read.csv("output/warming_results/exp2_gsat_metric.csv")
+lc_gsat_values_exp2_df$config <- "CE"
 
-# Read each file and assign config + term
-metrics_list <- lapply(file_list, function(file) {
-  df <- read.csv(file)
-  
-  # Remove 'X' column if it exists
-  if ("X" %in% names(df)) {
-    df <- df[ , names(df) != "X"]
-  }
-  
-  file_name <- basename(file)
-  
-  # Extract experiment ID (e.g., exp1)
-  exp_id <- sub("_.*", "", file_name)
-  config <- exp_map[exp_id]
-  
-  # Determine term based on suffix in filename
-  term <- if (grepl("mid-term", file_name)) {
-    "mid-term"
-  } else if (grepl("near-term", file_name)) {
-    "near-term"
-  } else {
-    "long-term"  # No term in name → must be long-term
-  }
-  
-  df$config <- config
-  df$term <- term
-  return(df)
-})
+lc_gsat_values_exp3_df <- read.csv("output/warming_results/exp3_gsat_metric.csv")
+lc_gsat_values_exp3_df$config <- "ED"
+```
 
-# Combine all into one dataframe
-combined_metrics <- do.call(rbind, metrics_list)
-rownames(combined_metrics) <- NULL
+Combine to a single data frame:
+```{r}
+
+lc_gsat_all <- rbind(lc_gsat_values_exp1_df, lc_gsat_values_exp2_df, lc_gsat_values_exp3_df)
+
 ```
 
 # Start plotting
@@ -67,105 +46,92 @@ rownames(combined_metrics) <- NULL
 Now that the data is loaded and the formatting is corrected (which you will want to fix in the write csv code), we can move on to plotting the overlayed weighted warming distirbutions. 
 
 ```{r}
-lt_warming_plot <- 
+lc_warming_plot <- 
   ggplot() +
   stat_density(
-    data = subset(combined_metrics, term == "long-term"), 
-    aes(x = metric_result, weight = mc_weight, color = config), 
+    data = lc_gsat_all, 
+    aes(x = metric_result, color = config), 
     geom = "line", 
-    linewidth = 1,
-    adjust = 1
-  ) +
+    linewidth = 1) +
   labs(
     x = "2081-2100 Temperature Anomaly (C)",
-    y = "Density (weighted)") +
+    y = "Density") +
   theme_light() +
   theme(axis.title.y = element_blank()) +
-  facet_wrap(~scenario, scales = "free_x")
+  facet_wrap(~scenario)
 
-lt_warming_plot
-```
-### mid-term plot
-
-```{r}
-mt_warming_plot <- 
-  ggplot() +
-  stat_density(
-    data = subset(combined_metrics, term == "mid-term"), 
-    aes(x = metric_result, weight = mc_weight, color = config), 
-    geom = "line", 
-    linewidth = 1,
-    adjust = 1
-  ) +
-  labs(
-    x = "2041-2060 Temperature Anomaly (C)",
-    y = "Density (weighted)"
-  ) +
-  theme_light() +
-  theme(axis.title.y = element_blank()) +
-  facet_wrap(~scenario, scales = "free_x")
-
-mt_warming_plot
-```
-### near-term plot
-
-```{r}
-nt_warming_plot <- 
-  ggplot() +
-  stat_density(
-    data = subset(combined_metrics, term == "near-term"), 
-    aes(x = metric_result, weight = mc_weight, color = config), 
-    geom = "line", 
-    linewidth = 1,
-    adjust = 1
-  ) +
-  labs(
-    title = "Likelihood-weighted Warming Distribution",
-    x = "2021-2040 Temperature Anomaly (C)",
-    y = "Density (weighted)"
-  ) +
-  theme_light() +
-  facet_wrap(~scenario, scales = "free_x")
-
-nt_warming_plot
-```
-## Combine plots 
-
-```{r}
-library(ggpubr)
-
-combined_pdf <- ggarrange(nt_warming_plot, mt_warming_plot, lt_warming_plot, 
-                          ncol = 3, nrow = 1, 
-                          common.legend = T, legend = "bottom")
-
-combined_pdf
-
-ggsave("combined_plot.png", combined_pdf, width = 15, height = 8)
+lc_warming_plot
 ```
 
+```{r}
+metric_summary <- 
+  lc_gsat_all %>% 
+  group_by(config, scenario) %>% 
+  dplyr::summarize(
+    ci_05 = quantile(metric_result, probs = 0.05), 
+    ci_33 = quantile(metric_result, probs = 0.33), 
+    ci_50 = quantile(metric_result, probs = 0.50), 
+    ci_66 = quantile(metric_result, probs = 0.66),
+    ci_95 = quantile(metric_result, probs = 0.95), 
+  .groups = "drop")
 
-# Violin plots
-
-This is just a preliminary figure 
+```
 
 ```{r}
-ggplot(data = combined_metrics, 
-       aes(x = config, y = metric_result, weight = mc_weight)) +
-  geom_violin(scale = "area", fill = NA, color = "black") +
-  geom_point(aes(size = mc_weight, alpha = mc_weight, color = config), position = position_jitter(width = 0.2), shape = 16) +
-  scale_size_continuous(range = c(0.5, 3)) +
+ggplot() +
+  # Jittered points with weighted transparency and size
+  geom_jitter(
+    data = lc_gsat_all,
+    aes(x = config, y = metric_result, color = config),
+    width = 0.2,
+    shape = 16, 
+    alpha = 0.1
+  ) +
+  # Error bars from 5th to 95th
+  geom_errorbar(
+    data = metric_summary,
+    aes(x = config, ymin = ci_05, ymax = ci_95),
+    width = 0.1,
+    linewidth = 0.5
+  ) +
+  # Box (33rd to 66th)
+  geom_rect(
+    data = metric_summary,
+    aes(
+      xmin = as.numeric(factor(config)) - 0.25,
+      xmax = as.numeric(factor(config)) + 0.25,
+      ymin = ci_33,
+      ymax = ci_66,
+      fill = config),
+    color = "black"
+  ) +
+  # Median line
+  geom_segment(
+    data = metric_summary,
+    aes(
+      x = as.numeric(factor(config)) - 0.25,
+      xend = as.numeric(factor(config)) + 0.25,
+      y = ci_50,
+      yend = ci_50
+    ),
+    linewidth = 1
+  ) +
+  facet_wrap(~scenario, scales = "free_y") +
   scale_alpha_continuous(range = c(0.2, 0.8)) +
+  scale_size_continuous(range = c(0.5, 2.5)) +
   labs(
-    title = "End-of-century GMST projections",
-    x = "Experiment",
-    y = "GMST in 2100 (°C)"
+    title = "GSAT Anomaly Distributions in 2081-2100 by Experiment",
+    y = "Median (5-95%) GSAT in 2081-2100 (C)"
   ) +
-  facet_wrap(~scenario + term, scales = "free_y") +
-  guides(size = "none", alpha = "none")+
+  guides(size = "none", alpha = "none") +  
   theme_light() +
-  theme(axis.text.x = element_blank()) 
+  theme(
+    axis.text.x = element_blank(),         # remove x-axis labels
+    axis.ticks.x = element_blank(),        # remove x-axis tick marks
+    legend.position = "right"              # keep color legend visible
+  )
 
-ggsave("temp_violin_comparison.png", height = 10, width = 15)
+ggsave("output/figures/gsat_boxplot_comparison.png", height = 5, width = 9)
 ```
 
 This figure illustrates how different treatments of historical atmospheric CO2 in simple climate models fundamentally alter the shape and spread of future warming projections. While most reduced-complexity climate models adopt a concentration-driven approach in the historical period, a strategy that ensures close alignment with observations and seems intuitively sound, this experiment reveals that doing so significantly narrows the projected uncertainty range. Fully emissions-driven simulations, by contrast, allow historical carbon cycle uncertainty to propagate forward, resulting in broader and more dispersed warming distributions. Even the hybrid setup, where CO2 concentrations are prescribed only during the historical period, dampens ensemble spread in a way that persists into the future. These differences arise not from parametric variation, but from the structural assumptions embedded in how we treat historical carbon dynamics. This finding underscores that concentration-driven setups, while practical and observationally anchored, come with the cost of suppressing uncertainty in the Earth system's response to emissions. Emissions-driven historical runs, despite appearing redundant in the presence of observational CO2 data, offer a critical view into the range of plausible carbon cycle behaviors that can seed future divergence. This experiment highlights that uncertainty in future warming is not just driven by emissions or physical parameters, but also by how we represent and constrain the past, a methodological choice that deserves more scrutiny in ensemble design and uncertainty communication.
@@ -189,305 +155,4 @@ Bullet point takeaways:
  - How this helps us understand SCM uncertainty:
  
  Shows that future projection spread is influenced not just by emissions or parameter choices, but by how we structure the model historically. Challenges the assumption that SCMs always underpredict uncertainty because of missing processes — sometimes it's from over-constraining history. Suggests that using a blend of concentration- and emissions-driven ensembles might better capture the full range of plausible Earth system responses.
-
-## Computing summaries of end of century warming
-
-Here I want to calculat the median and CI of the end of century warming. So I want to use the metric data, group it by experiment and scneario, and compute the weighted quntiles. 
-
-First start this with the metric data then we can break into the time series data. 
-
-```{r}
-metric_summary <- 
-  combined_metrics %>% 
-  group_by(config, scenario, term) %>% 
-  dplyr::summarize(
-    ci_05 = weighted.quantile(metric_result, w = mc_weight, probs = c(0.05)), 
-    ci_33 = weighted.quantile(metric_result, w = mc_weight, probs = c(0.33)), 
-    ci_50 = weighted.quantile(metric_result, w = mc_weight, probs = c(0.50)), 
-    ci_66 = weighted.quantile(metric_result, w = mc_weight, probs = c(0.66)),
-    ci_95 = weighted.quantile(metric_result, w = mc_weight, probs = c(0.95)), 
-  .groups = "drop")
-
-```
-
-```{r}
-ggplot() +
-  # Jittered points with weighted transparency and size
-  geom_jitter(
-    data = combined_metrics,
-    aes(x = config, y = metric_result, size = mc_weight, alpha = mc_weight, color = config),
-    width = 0.2,
-    shape = 16
-  ) +
-  # Error bars from 5th to 95th
-  geom_errorbar(
-    data = metric_summary,
-    aes(x = config, ymin = ci_05, ymax = ci_95),
-    width = 0.1,
-    linewidth = 0.5
-  ) +
-  # Box (33rd to 66th)
-  geom_rect(
-    data = metric_summary,
-    aes(
-      xmin = as.numeric(factor(config)) - 0.25,
-      xmax = as.numeric(factor(config)) + 0.25,
-      ymin = ci_33,
-      ymax = ci_66,
-      fill = config, 
-      colour = config
-    ),
-    alpha = 0.6,
-  ) +
-  # Median line
-  geom_segment(
-    data = metric_summary,
-    aes(
-      x = as.numeric(factor(config)) - 0.25,
-      xend = as.numeric(factor(config)) + 0.25,
-      y = ci_50,
-      yend = ci_50
-    ),
-    linewidth = 1
-  ) +
-  facet_wrap(~scenario + term, scales = "free_y") +
-  scale_alpha_continuous(range = c(0.2, 0.8)) +
-  scale_size_continuous(range = c(0.5, 2.5)) +
-  labs(
-    title = "Weighted GMST Distributions in 2100 by Experiment",
-    x = "Experiment",
-    y = "GMST in 2100 (°C)"
-  ) +
-  guides(size = "none", alpha = "none") +  
-  theme_light() +
-  theme(
-    axis.text.x = element_blank(),         # remove x-axis labels
-    axis.ticks.x = element_blank(),        # remove x-axis tick marks
-    legend.position = "right"              # keep color legend visible
-  )
-
-ggsave("temp_box_comparison.png", height = 10, width = 15)
-```
-
-## Visualizing parameter sensitivtiy or something
-
-This plot not very informative, thought it was going to tbe more interesting than it ended up being. 
-
-```{r}
-source("set-up/load_params.R")
-
-parameters$run_number <- 1:nrow(parameters)
-
-parameter_sensitivity_df <- dplyr::left_join(combined_metrics, parameters, by = "run_number")
-
-param_sensitivity_long <- parameter_sensitivity_df %>%
-  pivot_longer(cols = c(ECS, BETA, Q10_RH, NPP_FLUX0, AERO_SCALE, DIFFUSIVITY),  
-               names_to = "parameter_name",
-               values_to = "parameter_value")
-```
-
-```{r}
-ggplot(param_sensitivity_long, aes(x = parameter_value, y = metric_result, color = config)) +
-  geom_smooth(aes(weight = mc_weight), se = FALSE, method = "loess", linewidth = 1) +
-  facet_wrap(~ scenario + parameter_name, scales = "free_x") +
-  labs(
-    title = "Parameter Sensitivity of GMST by Configuration",
-    x = "Parameter Value",
-    y = "GMST in 2100 (°C)",
-    color = "Configuration"
-  ) +
-  theme_light() +
-  theme(legend.position = "bottom")
-
-ggsave("example_plot.png", height = 20, width = 11)
-```
-
-
-# Plotting comparisons of metrics across SSP scenarios and term lengths
-
-First need to pivot the data that has my metric summary data
-```{r}
-wide_metric_summary <- metric_summary %>% 
-  mutate(iqr = ci_05 - ci_95) %>% 
-  select(config, scenario, term, ci_50, iqr) %>% 
-  pivot_wider(
-    names_from = config, 
-    values_from = c(ci_50, iqr), 
-    names_sep = "_"
-  )
-
-head(wide_metric_summary)
-
-```
-```{r}
-
-wide_metric_summary <- wide_metric_summary %>% 
-  mutate(
-    delta_median_conc_vs_em = ci_50_concentration - ci_50_emission,
-    delta_median_concem_vs_em = `ci_50_concentration-emission` - ci_50_emission,
-    delta_median_conc_vs_concem = ci_50_concentration - `ci_50_concentration-emission`,
-
-    spread_ratio_conc_vs_em = iqr_concentration / iqr_emission,
-    spread_ratio_concem_vs_em = `iqr_concentration-emission` / iqr_emission,
-    spread_ratio_conc_vs_concem = iqr_concentration / `iqr_concentration-emission`
-  )
-
-head(wide_metric_summary)
-```
-
-```{r}
-# Reshape to long format for plotting delta medians
-delta_long <- wide_metric_summary %>%
-  select(scenario, term,
-         delta_median_conc_vs_em,
-         delta_median_concem_vs_em,
-         delta_median_conc_vs_concem) %>%
-  pivot_longer(
-    cols = starts_with("delta_median"),
-    names_to = "comparison",
-    values_to = "delta_median"
-  ) %>%
-  mutate(comparison = recode(comparison,
-    delta_median_conc_vs_em = "Concentration - Emission",
-    delta_median_concem_vs_em = "Conc-Emission - Emission",
-    delta_median_conc_vs_concem = "Concentration - Conc-Emission"
-  ))
-
-# Reshape to long format for plotting spread ratios
-spread_long <- wide_metric_summary%>%
-  select(scenario, term,
-         spread_ratio_conc_vs_em,
-         spread_ratio_concem_vs_em,
-         spread_ratio_conc_vs_concem) %>%
-  pivot_longer(
-    cols = starts_with("spread_ratio"),
-    names_to = "comparison",
-    values_to = "spread_ratio"
-  ) %>%
-  mutate(comparison = recode(comparison,
-    spread_ratio_conc_vs_em = "Concentration / Emission",
-    spread_ratio_concem_vs_em = "Conc-Emission / Emission",
-    spread_ratio_conc_vs_concem = "Concentration / Conc-Emission"
-  ))
-```
-
-```{r}
-# Reorder the term variable
-delta_long$term <- factor(delta_long$term, levels = c("near-term", "mid-term", "long-term"))
-spread_long$term <- factor(spread_long$term, levels = c("near-term", "mid-term", "long-term"))
-
-# Plot delta medians
-p1 <- ggplot(delta_long, aes(x = term, y = delta_median, group = comparison,
-                             color = comparison)) +
-  geom_line() +
-  geom_point() +
-  labs(
-    title = "Δ Median GMST Between Configurations",
-    y = "Δ Median (°C)",
-    x = "Time Period",
-    color = "Comparison"
-  ) +
-  facet_wrap(~scenario) +
-  theme_minimal()
-
-# Plot spread ratios
-p2 <- ggplot(spread_long, aes(x = term, y = spread_ratio, group = comparison,
-                              color = comparison)) +
-  geom_line() +
-  geom_point() +
-  labs(
-    title = "IQR Ratio Between Configurations",
-    y = "IQR Ratio",
-    x = "Time Period",
-    color = "Comparison"
-  ) +
-  facet_wrap(~scenario) +
-  theme_minimal()
-
-# Display plots
-print(p1)
-print(p2)
-```
-
-The above data as a heat map:
-```{r}
-
-# Use your previously computed wide_df with delta_median_* columns
-heatmap_data <- wide_metric_summary %>%
-  select(scenario, term,
-         delta_median_conc_vs_em,
-         delta_median_concem_vs_em,
-         delta_median_conc_vs_concem) %>%
-  pivot_longer(cols = starts_with("delta_median"),
-               names_to = "comparison", values_to = "delta_median") %>%
-  mutate(comparison = recode(comparison,
-    delta_median_conc_vs_em = "Concentration - Emission",
-    delta_median_concem_vs_em = "Conc-Emission - Emission",
-    delta_median_conc_vs_concem = "Concentration - Conc-Emission"
-  ))
-
-# Optional: reorder term levels for clean X-axis
-heatmap_data$term <- factor(heatmap_data$term, levels = c("near-term", "mid-term", "long-term"))
-
-# Plot
-ggplot(heatmap_data, aes(x = term, y = comparison, fill = delta_median)) +
-  geom_tile(color = "white") +
-  geom_text(aes(label = round(delta_median, 2)), size = 5, color = "darkgrey") +
-  facet_wrap(~scenario) +
-  scale_fill_gradientn(
-    colors = RColorBrewer::brewer.pal(9, "YlGnBu"),
-    name = "Delta Median (°C)"
-  ) +
-  labs(
-    title = "Delta Median GMST Between Configurations",
-    x = "Time Period",
-    y = "Configuration Comparison",
-    fill = "Delta Median (C)"
-  ) +
-  theme_light()
-
-ggsave("median_heat_map.png", width = 11)
-```
-
-Uncertainty ratio figure:
-```{r}
-# Prepare heatmap data for IQR ratios
-iqr_heatmap_data <- wide_metric_summary %>%
-  select(scenario, term,
-         spread_ratio_conc_vs_em,
-         spread_ratio_concem_vs_em,
-         spread_ratio_conc_vs_concem) %>%
-  pivot_longer(
-    cols = starts_with("spread_ratio"),
-    names_to = "comparison",
-    values_to = "spread_ratio"
-  ) %>%
-  mutate(comparison = recode(comparison,
-    spread_ratio_conc_vs_em = "Concentration / Emission",
-    spread_ratio_concem_vs_em = "Conc-Emission / Emission",
-    spread_ratio_conc_vs_concem = "Concentration / Conc-Emission"
-  ))
-
-# Reorder term for X-axis
-iqr_heatmap_data$term <- factor(iqr_heatmap_data$term, levels = c("near-term", "mid-term", "long-term"))
-
-# Create IQR ratio heatmap (styled exactly like Delta Median)
-ggplot(iqr_heatmap_data, aes(x = term, y = comparison, fill = spread_ratio)) +
-  geom_tile(color = "white") +
-  geom_text(aes(label = round(spread_ratio, 2)), size = 5, color = "darkgrey") +
-  facet_wrap(~scenario) +
-  scale_fill_gradientn(
-    colors = RColorBrewer::brewer.pal(9, "YlGnBu"),
-    name = "Very Likely Range Ratio"
-  ) +
-  labs(
-    title = "VLR Ratio Between Configurations",
-    x = "Time Period",
-    y = "Configuration Comparison",
-    fill = "VLR Ratio"
-  ) +
-  theme_light()
-
-ggsave("uncertainty_heat_map.png", width = 11, height = 7)
-```
 
