@@ -58,24 +58,33 @@ lc_gsat_list <- lapply(lc_config_list, function(df) {
 
 KS test:
 ```{r}
+# get config names
 configs <- names(lc_gsat_list)
+
+# Get scenario names
 scenarios <- names(lc_gsat_list[[1]])  # assumes same scenarios in each config
 
-# Define all config pairs you want to test
+# Get combination of all config types -- for pairwise comparison 
 config_pairs <- combn(configs, 2, simplify = FALSE)
 
 # Loop through each scenario and config pair
 ks_results <- lapply(scenarios, function(scn) {
+  
+  # loop through each pair of configs for the current scenario
   lapply(config_pairs, function(pair) {
     
+    # get names of each config in the current pair
     config1 <- pair[1]
     config2 <- pair[2]
     
-    x <- lc_gsat_list[[config1]][[scn]]$metric_result
-    y <- lc_gsat_list[[config2]][[scn]]$metric_result
+    # get the GSAT metric values for both configurations 
+    config1_values <- lc_gsat_list[[config1]][[scn]]$metric_result
+    config2_values <- lc_gsat_list[[config2]][[scn]]$metric_result
     
-    ks <- ks.test(x, y)
+    # run the KS test
+    ks <- ks.test(config1_values, config2_values)
     
+    # store KS test results in data frame
     data.frame(
       scenario = scn,
       config1 = config1,
@@ -84,39 +93,58 @@ ks_results <- lapply(scenarios, function(scn) {
       p_value = ks$p.value
     )
     
-  }) %>% bind_rows()
-}) %>% bind_rows()
+  }) %>% bind_rows() # combine results across configs 
+}) %>% bind_rows() # combine results across scenarios
+
 ```
 
 flag significance:
 ```{r}
+# easily indicate the statistically significant KS-test results
 ks_results <- ks_results %>%
   mutate(significant = p_value < 0.05)
+
 ```
 
 write bootstrap function to get mean skewness or kurtosis:
+MOVE THIS TO UTILS SCRIPT
 ```{r}
+
 bootstrap_stat_moments <- function(values, stat_func, n_boot = 10000, n_sample = 1000) {
+  
+  # repeat these steps 'n_boot' times 
   replicate(n_boot, {
+    
+    # randomly sample 'n_sample' values with replacement from the input vector 'values'
     resample <- sample(values, size = n_sample, replace = TRUE)
+    
+    # apply a stat function to the 1000 member sample (skewness or kurtoxis)
     stat_func(resample)
-  })
+  
+    })
 }
+
 ```
 
 Compute bootstrap fr distribution skew and kurtosis:
 ```{r}
+
 set.seed(444)
 
-# Bootstrap for skewness
+# Bootstrap for skewness for each config
 bootstrap_skew_df <- lapply(names(lc_gsat_list), function(config) {
   
+  # get list of scenarios for current config
   config_data <- lc_gsat_list[[config]]
   
+  # loop through scenarios 
   lapply(names(config_data), function(scenario) {
     
+    # get gsat warming values for current config-scenario combination
     values <- config_data[[scenario]]$metric_result
-    skew_vals <- bootstrap_stat_moments(values, skewness)
+    
+    # use the bootstrapping function to compute distribution of skewness estimates
+    skew_vals <- bootstrap_stat_moments(values, skewness) # skewness = moments package
 
     data.frame(
       config = config,
@@ -124,18 +152,23 @@ bootstrap_skew_df <- lapply(names(lc_gsat_list), function(config) {
       skewness = skew_vals
     )
     
-  }) %>% bind_rows()
-}) %>% bind_rows()
+  }) %>% bind_rows() # combine results across scenario level
+}) %>% bind_rows() # combine results across configuration level
 
 # Bootstrap for kurtosis
 bootstrap_kurt_df <- lapply(names(lc_gsat_list), function(config) {
   
+  # get list of scenarios for current config
   config_data <- lc_gsat_list[[config]]
   
+  # loop through scenarios
   lapply(names(config_data), function(scenario) {
     
+    # get gsat warming values for current config-scenario combination
     values <- config_data[[scenario]]$metric_result
-    kurt_vals <- bootstrap_stat_moments(values, kurtosis)
+    
+     # use the bootstrapping function to compute distribution of kurtosis estimates
+    kurt_vals <- bootstrap_stat_moments(values, kurtosis) # kurtosis = moments package
 
     data.frame(
       config = config,
@@ -143,13 +176,13 @@ bootstrap_kurt_df <- lapply(names(lc_gsat_list), function(config) {
       kurtosis = kurt_vals
     )
     
-  }) %>% bind_rows()
-}) %>% bind_rows()
+  }) %>% bind_rows() # combine results across scenario level
+}) %>% bind_rows() # combine results across congif level
 
 
 ```
 
-construct a summary tableusing bootstrap results
+construct a summary table using bootstrap results
 ```{r}
 # Skewness summary
 skew_summary_df <- bootstrap_skew_df %>%

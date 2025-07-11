@@ -75,6 +75,7 @@ head(lc_gsat_summary)
 ```
 
 Now we want to bootstrap the uncertainty spread for each config-scenario combination so we can compare the differences in uncertainty spread:
+MOVE THIS TO UTILS SCRIPT
 ```{r}
 set.seed(444)
 
@@ -85,12 +86,18 @@ n_sample <- 1000
 # bootstrap function
 bootstrap_spread <- function(values, n_boot, n_sample) {
   
+  # repeat these steps 'n_boot' times
   replicate(n_boot, {
+    
+    # randomly sample 'n_sample' values with replacement from the input vector 'values'
     resample = sample(values, size = n_sample, replace = TRUE)
+    
+    # compute stats for the sample
     ci_5 = quantile(resample, probs = 0.05) 
     ci_95 = quantile(resample, probs = 0.95) 
     ci_95 - ci_5
-  })
+  
+    })
 }
 
 # split data into config-scenario groups
@@ -99,9 +106,13 @@ lc_gsat_split <- split(lc_gsat_all, list(lc_gsat_all$config, lc_gsat_all$scenari
 # apply bootstrap
 bootstrap_lc_gsat_spread <- lapply(names(lc_gsat_split), function(group_name) {
   
+  # Get the data for this specific configuration-scenario group
   group_data <- lc_gsat_split[[group_name]]
+  
+  # Apply the bootstrap function to compute 10,000 spread values
   spread_vals <- bootstrap_spread(group_data$metric_result, n_boot, n_sample)
   
+  ## this is still messy -- could be cleaner if I fix this before hand?
   # get config and scenario names from the "group_name"
   parts <- unlist(strsplit(group_name, split = "\\."))
   config <- parts[1]

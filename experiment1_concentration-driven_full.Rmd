@@ -100,7 +100,7 @@ lapply(matilda_result_exp1, function(df) {
 })
 
 ```
-Remove NAs if desired:
+Remove NAs:
 ```{r}
 
 matilda_result_exp1 <- lapply(matilda_result_exp1, function(df) {
@@ -198,7 +198,7 @@ write.csv(gsat_metrics_exp1_df, file_path, row.names = FALSE)
 
 ```
 
-Preliminary visualization of warming PDF. Here we want to plot a weighted PDF curve with a facet for scenario:
+Preliminary visualization of warming PDF:
 ```{r}
 
 ggplot(gsat_metrics_exp1_df, aes(x = metric_result)) +
