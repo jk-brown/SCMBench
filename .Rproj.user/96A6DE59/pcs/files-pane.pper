@@ -1,8 +1,20 @@
 {
     "sortOrder": [
         {
+            "columnIndex": 1,
+            "ascending": true
+        },
+        {
             "columnIndex": 2,
             "ascending": true
+        },
+        {
+            "columnIndex": 3,
+            "ascending": false
+        },
+        {
+            "columnIndex": 4,
+            "ascending": false
         }
     ],
     "path": "C:/Users/brow521/R_projects/Github_repos/SCMBench/set-up"

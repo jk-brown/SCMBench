@@ -1,0 +1,112 @@
+---
+title: "Figure - Compare Wamring Probabilities"
+author: "Joe Brown"
+date: "2025-06-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set-up 
+
+```{r}
+source("set-up/libraries.R")
+```
+
+We want to read in the probability results for each experiment, add a column for the experiment code, and then cbind rows into a single dataframe.
+
+```{r}
+# read all prbability data 
+prob_list <- 
+  list (prob_exp1 <- read.csv("output/probability_results/exp1_gsat_probability.csv"), 
+        prob_exp2 <- read.csv("output/probability_results/exp2_gsat_probability.csv"), 
+        prob_exp3 <- read.csv("output/probability_results/exp3_gsat_probability.csv"))
+
+# Assign config labels (same order as list)
+config_labels <- c("CD", "CE", "ED")
+
+# Add config column and combine into one data frame
+named_prob_list <- Map(function(df, config) {
+  
+  df$config <- config
+  
+  return(df)
+  
+}, prob_list, config_labels)
+
+# Combine all into one data frame
+probability_df <- do.call(rbind, named_prob_list)
+
+# Map original bin factor to friendly labels
+probability_df$bin_label <- recode_factor(
+  probability_df$bins,
+  "(0,1]" = "0 to 1.0 C",
+  "(1,1.5]" = "1.0 to 1.5 C",
+  "(1.5,2]" = "1.5 to 2.0 C",
+  "(2,2.5]" = "2.0 to 2.5 C",
+  "(2.5,3]" = "2.5 to 3.0 C",
+  "(3,3.5]" = "3.0 to 3.5 C",
+  "(3.5,4]" = "3.5 to 4.0 C",
+  "(4,4.5]" = "4.0 to 4.5 C",
+  "(4.5,Inf]" = "4.5+ C"
+)
+
+# fancy palette
+TEMP_PROBABILITY_COLORS <- c(
+  "0 to 1.0 C" = "navyblue",
+  "1.0 to 1.5 C" = "#2166AC",
+  "1.5 to 2.0 C" = "#4393C3",
+  "2.0 to 2.5 C" = "#D1E5f0",
+  "2.5 to 3.0 C" = "#FDDBC7",
+  "3.0 to 3.5 C" = "#F4A582",
+  "3.5 to 4.0 C" = "#D6604D",
+  "4.0 to 4.5 C" = "#B2182B",
+  "4.5+ C"     = "#67001F"
+)
+
+ggplot(data = probability_df, aes(x = config, y = probability, fill = bin_label)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  facet_wrap(~ scenario) +
+  scale_fill_manual(values = TEMP_PROBABILITY_COLORS, name = "Warming Bin") +
+  labs(
+    title = "Probability Distribution of End-of-Century GSAT",
+    x = "Experiment Configuration",
+    y = "Probability"
+  ) +
+  theme_light() +
+  theme(
+    legend.position = "right",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) 
+```
+
+```{r}
+probability_plot <- 
+  ggplot(data = probability_df, aes(x = config, y = probability, fill = bin_label)) +
+  geom_bar(stat = "identity", position = position_fill(reverse = TRUE), color = "black") +
+  facet_wrap(~ scenario) +
+  coord_flip() +
+  scale_fill_manual(values = TEMP_PROBABILITY_COLORS, name = "Warming Bin") +
+  labs(
+    title = "Probability Distribution of End-of-Century GMST",
+    x = "Scenario",
+    y = "Probability"
+  ) +
+  theme_light() +
+  theme(
+    legend.position = "right",
+    axis.text.x = element_text(size = 10),
+    axis.text.y = element_text(size = 10)
+  )
+
+print(probability_plot)
+
+ggsave("output/figures/probability_plot.png", 
+       height = 6, 
+       width = 10, 
+       units = "in", 
+       device = "png")
+```
+

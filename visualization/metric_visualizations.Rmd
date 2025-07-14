@@ -1,0 +1,158 @@
+---
+title: "Figure - Compare Warming Distirbutions"
+author: "Joe Brown"
+date: "2025-06-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set-up 
+
+```{r}
+source("set-up/libraries.R")
+```
+
+
+# Data 
+
+# Data 
+
+Need Matilda warming projection results from each of the three configurations we are testing.
+
+Load experiment GSAT metric results:
+```{r}
+lc_gsat_values_exp1_df <- read.csv("output/warming_results/exp1_gsat_metric.csv")
+lc_gsat_values_exp1_df$config <- "CD"
+
+lc_gsat_values_exp2_df <- read.csv("output/warming_results/exp2_gsat_metric.csv")
+lc_gsat_values_exp2_df$config <- "CE"
+
+lc_gsat_values_exp3_df <- read.csv("output/warming_results/exp3_gsat_metric.csv")
+lc_gsat_values_exp3_df$config <- "ED"
+```
+
+Combine to a single data frame:
+```{r}
+
+lc_gsat_all <- rbind(lc_gsat_values_exp1_df, lc_gsat_values_exp2_df, lc_gsat_values_exp3_df)
+
+```
+
+# Start plotting
+
+Now that the data is loaded and the formatting is corrected (which you will want to fix in the write csv code), we can move on to plotting the overlayed weighted warming distirbutions. 
+
+```{r}
+lc_warming_plot <- 
+  ggplot() +
+  stat_density(
+    data = lc_gsat_all, 
+    aes(x = metric_result, color = config), 
+    geom = "line", 
+    linewidth = 1) +
+  labs(
+    x = "2081-2100 Temperature Anomaly (C)",
+    y = "Density") +
+  theme_light() +
+  theme(axis.title.y = element_blank()) +
+  facet_wrap(~scenario)
+
+lc_warming_plot
+```
+
+```{r}
+metric_summary <- 
+  lc_gsat_all %>% 
+  group_by(config, scenario) %>% 
+  dplyr::summarize(
+    ci_05 = quantile(metric_result, probs = 0.05), 
+    ci_33 = quantile(metric_result, probs = 0.33), 
+    ci_50 = quantile(metric_result, probs = 0.50), 
+    ci_66 = quantile(metric_result, probs = 0.66),
+    ci_95 = quantile(metric_result, probs = 0.95), 
+  .groups = "drop")
+
+```
+
+```{r}
+ggplot() +
+  # Jittered points with weighted transparency and size
+  geom_jitter(
+    data = lc_gsat_all,
+    aes(x = config, y = metric_result, color = config),
+    width = 0.2,
+    shape = 16, 
+    alpha = 0.1
+  ) +
+  # Error bars from 5th to 95th
+  geom_errorbar(
+    data = metric_summary,
+    aes(x = config, ymin = ci_05, ymax = ci_95),
+    width = 0.1,
+    linewidth = 0.5
+  ) +
+  # Box (33rd to 66th)
+  geom_rect(
+    data = metric_summary,
+    aes(
+      xmin = as.numeric(factor(config)) - 0.25,
+      xmax = as.numeric(factor(config)) + 0.25,
+      ymin = ci_33,
+      ymax = ci_66,
+      fill = config),
+    color = "black"
+  ) +
+  # Median line
+  geom_segment(
+    data = metric_summary,
+    aes(
+      x = as.numeric(factor(config)) - 0.25,
+      xend = as.numeric(factor(config)) + 0.25,
+      y = ci_50,
+      yend = ci_50
+    ),
+    linewidth = 1
+  ) +
+  facet_wrap(~scenario, scales = "free_y") +
+  scale_alpha_continuous(range = c(0.2, 0.8)) +
+  scale_size_continuous(range = c(0.5, 2.5)) +
+  labs(
+    title = "GSAT Anomaly Distributions in 2081-2100 by Experiment",
+    y = "Median (5-95%) GSAT in 2081-2100 (C)"
+  ) +
+  guides(size = "none", alpha = "none") +  
+  theme_light() +
+  theme(
+    axis.text.x = element_blank(),         # remove x-axis labels
+    axis.ticks.x = element_blank(),        # remove x-axis tick marks
+    legend.position = "right"              # keep color legend visible
+  )
+
+ggsave("output/figures/gsat_boxplot_comparison.png", height = 5, width = 9)
+```
+
+This figure illustrates how different treatments of historical atmospheric CO2 in simple climate models fundamentally alter the shape and spread of future warming projections. While most reduced-complexity climate models adopt a concentration-driven approach in the historical period, a strategy that ensures close alignment with observations and seems intuitively sound, this experiment reveals that doing so significantly narrows the projected uncertainty range. Fully emissions-driven simulations, by contrast, allow historical carbon cycle uncertainty to propagate forward, resulting in broader and more dispersed warming distributions. Even the hybrid setup, where CO2 concentrations are prescribed only during the historical period, dampens ensemble spread in a way that persists into the future. These differences arise not from parametric variation, but from the structural assumptions embedded in how we treat historical carbon dynamics. This finding underscores that concentration-driven setups, while practical and observationally anchored, come with the cost of suppressing uncertainty in the Earth system's response to emissions. Emissions-driven historical runs, despite appearing redundant in the presence of observational CO2 data, offer a critical view into the range of plausible carbon cycle behaviors that can seed future divergence. This experiment highlights that uncertainty in future warming is not just driven by emissions or physical parameters, but also by how we represent and constrain the past, a methodological choice that deserves more scrutiny in ensemble design and uncertainty communication.
+
+Bullet point takeaways:
+
+ - What the figure shows:
+ 
+ Prescribing CO2 in both history and future yields narrow, peaked warming projections. Prescribing CO2 only in history (green) produces intermediate spread. Fully emissions-driven runs show broader, flatter distributions, exposing the influence of carbon cycle feedback uncertainty.
+
+ - What might be novel here:
+ 
+ Demonstrates, within the same model and ensemble, how structural choices in forcing setup alone shape projection uncertainty. Reveals that historical constraint methods (not just parameter values or emissions scenarios) meaningfully change outcomes. Highlights the downstream consequences of ensemble construction strategy — something rarely tested explicitly in RCMs.
+
+ - Why this matters despite having CO2 observations:
+ 
+ Using observed CO2 in history makes sense practically, but it removes all historical carbon cycle flexibility. Emissions-driven runs let us explore how uncertainty in land/ocean sinks and feedbacks could influence initial conditions and propagate forward. Even if we can match CO2 with concentrations, it's scientifically valuable to ask: what range of behaviors could have produced that curve?
+ 
+ If we know what range of behaviors produced that curve, it is likely that those same behaviors will follow earth system physics into the future?
+
+ - How this helps us understand SCM uncertainty:
+ 
+ Shows that future projection spread is influenced not just by emissions or parameter choices, but by how we structure the model historically. Challenges the assumption that SCMs always underpredict uncertainty because of missing processes — sometimes it's from over-constraining history. Suggests that using a blend of concentration- and emissions-driven ensembles might better capture the full range of plausible Earth system responses.
+
